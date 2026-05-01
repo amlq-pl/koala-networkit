@@ -6,6 +6,21 @@
       "intelliSenseMode": "linux-gcc-x64",
       "cStandard": "c17",
       "cppStandard": "c++20"
+    },
+    {
+      "name": "Mac",
+      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "intelliSenseMode": "macos-clang-arm64",
+      "cStandard": "c17",
+      "cppStandard": "c++20",
+      "includePath": [
+        "${workspaceFolder}/include",
+        "${workspaceFolder}/lib/networkit/include",
+        "${workspaceFolder}/lib/networkit/extlibs/tlx",
+        "${workspaceFolder}/lib/csdp/include",
+        "/opt/homebrew/Cellar/libomp/22.1.4/include",
+        "/opt/homebrew/Cellar/boost/1.90.0_1/include"
+      ]
     }
   ],
   "version": 4
