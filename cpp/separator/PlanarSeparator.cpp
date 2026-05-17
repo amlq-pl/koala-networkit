@@ -225,6 +225,13 @@ void PlanarSeparator::run() {
                 }
             }
         }
+
+        bool insideIsClockwiseArc = true;
+
+        if (outside > inside) {
+            std::swap(inside, outside);
+            insideIsClockwiseArc = false;
+        }
     }
 }
 
