@@ -1,0 +1,336 @@
+SIAM J. APPL. 'MATH. Vol. 36, No. 2, April 1979 
+1979 Society for Industrial and Applied Mathematics 0036-1399/79/3602-0001 $01.00/0 
+A SEPARATOR THEOREM FOR PLANAR GRAPHS* 
+RICHARD J. LIPTON† AND ROBERT ENDRE TARJAN‡ 
+Abstract. Let G be any n-vertex planar graph. We prove that the vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor B contains more than 2n/3 vertices, and C contains no more than 2√2√n vertices. We exhibit an algorithm which finds such a partition A, B, C in O(n) time. 
+1. Introduction. A useful method for solving many kinds of combinatorial pro- blems is "divide-and-conquer" [1]. In this method the problem of interest is divided into two or more smaller problems. The subproblems are solved by applying the method recursively, and the subproblem solutions are combined to give the solution to the original problem. Three things are necessary for the success and efficiency of divide-and-conquer: (i) the subproblerns must be of the same type as the original and independent of each other (in a suitable sense); (ii) the cost of solving the original problem given the solutions to the subproblems must be small; and (iii) the sub- problems must be significantly smaller than the original. One way to guarantee that the subproblems are small is to make them all roughly the same size [1]. 
+We wish to study general conditions under which the divide-and-conquer approach is useful. Consider problems which are defined on graphs. Let S be a class of graphs' closed under the subgraph relation (i.e., if G1ES and G2 is a subgraph of G1, then G2ES). An f(n)-separator theorem for S is a theorem of the following form: 
+There exist constants a <1, ß>0 such that if G is any n-vertex graph in S, the vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor B contains more than an vertices, and C contains no more than ßf(n) vertices. 
+If such a theorem holds for the class of graphs S, and if the appropriate vertex partitions A, B, C can be found fast, then a number of problems defined on graphs in S can be solved efficiently using divide-and-conquer. For a given graph G in S, the sets A and B define the subproblems. The cost of combining the subproblem solutions. is a function of the size of C (and thus of f(n)). 
+Previously known separator theorems include the following: 
+(A) Any n-vertex binary tree can be separated into two subtrees, each with no more than 2n/3 vertices, by removing a single edge. For an application of this theorem, see [13]. 
+(B) Any n-vertex tree can be divided into two parts, each with no more than 2n/3 vertices, by removing a single vertex. 
+(C) A grid graph is any subgraph of the infinite two-dimensional square grid illustrated in Fig. 1. A vn-separator theorem holds for the class of grid graphs. For an application, see [5]. 
+* Received by the editors August 10, 1977. 
++ Computer Science Department, Yale University, New Haven, Connecticut 06520. This research was supported in part by the U.S. Army Research Office under Grant DAAG 29-76-G-0338 and The National Science Foundation under Grant MCS 78-81486. 
+Computer Science Department, Stanford University, Stanford, California 94305. This research was supported in part by National Science Foundation under Grant MCS-75-22870 and in part by the Office of Naval Research under Contract N00014-76-C÷0688. 
+' 
+The Appendix contains the graph-theoretic definitions used in this paper. 
+177 
+178 
+RICHARD J. LIPTON AND ROBERT ENDRE TARJAN 
+** 
+FIG. 1. Infinite two-dimensional square grid. 
+(D) A one-tape Turing machine graph [16] is a graph representing the compu- tation of a one-tape Turing machine. A √n-separator theorem holds for such graphs. For an application, see [15]. 
+One might conjecture that the class of all suitably sparse graphs has an f(n)- separator theorem for some f(n) = o(n). However, the following result of Erdös Graham and Szemerédi [4] shows that this is not the case. 
+THEOREM C. For every ɛ >◊ there is a positive constant c = c(E) such that almost all2 graphs G with n = (2+e)k vertices and ck edges have the property that after the omission of any k vertices, a connected component of at least k vertices remains. 
+Although sparsity by itself is not enough to give a useful separator theorem, planarity is. In § 2 of this paper we prove that a √n-separator theorem holds for all planar graphs. In § 3 we provide a linear-time algorithm for finding a vertex partition satisfying the theorem. This algorithm and the divide-and-conquer approach combine to give efficient algorithms for a wide range of problems on planar graphs. Section 4 mentions some of these applications, which we shall discuss more fully in a subsequent 
+paper. 
+2. Separator theorems. To prove our results we need to use three facts about planarity. 
+THEOREM 1 (Jordan curve theorem [6]). Let C be any closed curve in the plane. Removal of C divides the plane into exactly two connected regions, the "inside" and the "outside" of C. 
+- 
+THEOREM 2 [7]. Any n-vertex planar graph with n ≥3 contains no more than 3n – 6 
+dges. 
+one. 
+2 
+By “almost all' we mean that the fraction of graphs possessing the property tends with increasing n to 
+A SEPARATOR THEOREM 
+179 
+(a) 
+(b) 
+FIG. 2. Kuratowski subgraphs: (a) K5, (b) K3,3. 
+་ 
+THEOREM 3 (Kuratowski's theorem [12]). A graph is planar if and only if it contains neither a complete graph on five vertices (Fig. 2(a)) nor a complete bipartite graph on two sets of three vertices (Fig. 2(b)) as a generalized subgraph. 
+From Kuratowski's theorem we can easily obtain the following lemma and its corollary. 
+LEMMA 1. Let G be any planar graph. Shrinking any edge of G to a single vertex preserves planarity. 
+Proof. Let G* be the shrunken graph, let (x1, x2) be the edge shrunk, and let x be the vertex corresponding to x1 and x2 in G*. If G* is not planar then G* contains a Kuratowski graph as a generalized subgraph. But this subgraph corresponds to a Kuratowski graph which is a generalized subgraph of G. Figure 3 illustrates the possibilities. O 
+X1 
+X2 
+X1 
+X 2 
+X1 
+X2 
+Χ 
+(a) 
+(b) 
+or 
+X 2 
+X1 
+X2 
+or 
+or 
+Χ 
+↑ 
+FIG. 3. Shrinking an edge to form a Kuratowski graph. Original graph must contain a Kuratowski graph as a generalized subgraph. 
+COROLLARY 1. Let G be any planar graph. Shrinking any connected subgraph of G to a single vertex preserves planarity. 
+Proof. The proof is immediate from Lemma 1 by induction on the number of vertices in the subgraph to be shrunk. 
+In some applications it is useful to have a result more general than the kind of separator theorem described in the Introduction. We shall therefore consider planar graphs which have nonnegative costs on the vertices. We shall prove that any such graph can be separated into two parts, each with cost no more than two-thirds of the total cost, by removing O(√n) vertices. The desired separator theorem is the special case of equal-cost vertices. 
+LEMMA 2. Let G be any planar graph with nonnegative vertex costs summing to no more than one. Suppose G has a spanning tree of radius r. Then he vertices of G can be partitioned into three sets A, B, C, such that no edge joins a vertex ir. A with a vertex in B, neither A nor B has total cost exceeding 2/3, and C contains no more than 2r+ 1 vertices, one the root of the tree. 
+E 
+180 
+RICHARD J. LIPTON AND ROBERT ENDRE TARJAN 
+Proof. Assume no vertex has cost exceeding 1/3; otherwise the lemma is true. Embed G in the plane. Make each face a triangle by adding a suitable number of additional edges. Any nontree edge (including each of the added edges) forms a simple cycle with some of the tree edges. This cycle is of length at most 2r+ 1 if it contains the root of the tree, at most 2r – 1 otherwise. The cycle divides the plane (and the graph) into two parts, the inside and the outside of the cycle. We claim that at least one such cycle separates the graph so that neither the inside nor the outside contains vertices whose total cost exceeds 2/3. This proves the lemma. 
+--- 
+Proof of claim. Let (x, z) be the nontree edge whose cycle minimizes the maxi- mum cost either inside or outside the cycle. Break ties by choosing the nontree edge whose cycle has the smallest number of faces on the same side as the maximum cost. If ties remain, choose arbitrarily. 
+Suppose without loss of generality that the graph is embedded so that the cost inside the (x, z) cycle is at least as great as the cost outside the cycle. If the vertices inside the cycle have total cost not exceeding 2/3, the claim is true. Suppose the vertices inside the cycle have total cost exceeding 2/3. We show by case analysis that this contradicts the choice of (x, z). Consider the face which has (x, z) as a boundary edge and lies inside the cycle. This face is a triangle; let y be its third vertex. The properties of (x, y) and (y, z) determine which of the following cases applies. Figure 4 illustrates the cases. 
+1) x 
+2) 
+Ө 
+3a) 
+X 
+3c) 
+X 
+y 
+Z 
+3b) 
+or 
+x 
+FIG. 4. Cases for proof of Lemma 2. Solid edges are tree edges; dotted edges are nontree edges. 
+A SEPARATOR THEOREM 
+181 
+1) Both (x, y) and (y, z) lie on the cycle. Then the face (x, y, z) is the cycle, which is impossible since vertices lie inside the cycle. 
+2) One of (x, y) and (y, z) (say (x, y)) lies on the cycle. Then (y, z) is a nontree edge defining a cycle which contains within it the same vertices as the original cycle but one less face. This contradicts the choice of (x, z). 
+3) Neither (x, y) nor (y, z) lies on the cycle. 
+a) Both (x, y) and (y, z) are tree edges. This is impossible since the tree itself contains no cycles. 
+b) One of (x, y) and (y, z) (say (x, y)) is a tree edge. Then (y, z) is a nontree edge defining a cycle which contains one less vertex (namely y) within it than the original cycle. The inside of the (y, z) cycle contains no more cost and one less face than the inside of the (x, z) cycle. Thus if the cost inside the (y, z) cycle is greater than the cost outside the cycle, (y, z) would have been chosen in place of (x, z). 
+On the other hand, suppose the cost inside the (y, z) cycle is no greater than the cost outside. The cost outside the (y, z) cycle is equal to the cost outside the (x, z) cycle plus the cost of y. Since both the cost outside the (x, z) cycle and the cost of y are less than 1/3, the cost outside the (y, z) cycle is less than 2/3, and (y, z) would have been chosen in place of (x, z). 
+c) Neither (x, y) nor (y, z) is a tree edge. Then each of (x, y) and (y, z) defines a cycle, and every vertex inside the (x, z) cycle is either inside the (x, y) cycle, inside the (y, z) cycle, or on the boundary of both. Of the (x, y) and (y, z) cycles, choose the one (say (x, y)) which has inside it more total cost. The (x, y) cycle has no more cost and strictly fewer faces inside it than the (x, z) cycle. Thus if the cost inside the (x, y) cycle is greater than the cost outside, (x, y) would have been chosen in place of (x, z). 
+On the other hand, suppose the cost inside the (x, y) cycle is no greater than the cost outside. Since the inside of the (x, z) cycle has cost exceeding 2/3, the (x, y) cycle and its inside together have cost exceeding 1/3, and the outside of the (x, y) cycle has cost less than 2/3. Thus (x, y) would have been chosen in place of (x, z). 
+Thus all cases are impossible, and the (x, z) cycle satisfies the claim. O Lemma 3. Let G be any n-vertex connected planar graph having nonnegative vertex costs summing to no more than one. Suppose that the vertices of G are partitioned into levels according to their distance from some vertex v, and that L(1) denotes the number of vertices on level l. If r is the maximum distance of any vertex from v, let r + 1 be an additional level containing no vertices. Given any two levels l, and l1⁄2 such that levels 0 through 1,-1 have total cost not exceeding 2/3 and levels 12+1 through r+1 have total cost not exceeding 2/3, it is possible to find a partition A, B, C of the vertices of G such that no edge joins a vertex in A with a vertex in B, neither A nor B has total cost exceeding 2/3, and C contains no more than L()+L(12) + max {0, 2(12-1, -1)} 
+vertices. 
+Proof. If I, 2, let A be all vertices on levels 0 through 7, -1, B all vertices on levels +1 through r, and C all vertices on level 1. Then the lemma is true. Thus suppose <12. Delete the vertices in levels 1 and 2 from G. This separates the remaining vertices of G into three parts (all of which may be empty): vertices on levels 0 through I, 1, vertices on levels 1, +1 through 2-1, and vertices on levels 12+ 1 and above. The only part which can have cost exceeding 2/3 is the middle part. 
+If the middle part does not have cost exceeding 2/3, let A be the most costly part of the three, let B be the remaining two parts, and let C be the set of vertices on levels I1 and 2. Then the lemma is true. 
+Suppose the middle part has cost exceeding 2/3. Delete all vertices on levels l1⁄2 and above and shrink all vertices on levels 7, and below to a single vertex of cost zero. 
+182 
+RICHARD J. LIPTON AND ROBERT ENDRE TARJAN 
+These operations preserve planarity by Corollary 1. The new graph has a spanning tree of radius 11⁄2- l1 −1 whose root corresponds to vertices on levels l, and below in the original graph. 
+Apply Lemma 2 to the new graph. Let A*, B*, C* be the resulting vertex partition. Let A be the set among A* and B* having greater cost, let C consist of the vertices on levels I, and 1⁄2 in the original graph plus the vertices in C* minus the root of the tree, and let B contain the remaining vertices in G. By Lemma 2, A has total cost not exceeding 2/3. But AUC* has total cost at least 1/3, so B also has total cost not exceeding 2/3. Furthermore C contains no more than L(11)+L(l2)+2(l1⁄2 − l1 − 1) vertices. Thus the lemma is true. ☐ 
+THEOREM 4. Let G be any n-vertex planar graph having nonnegative vertex costs summing to no more than one. Then the vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor B has total cost exceeding 2/3, and C contains no more than 2√2√n vertices. 
+Proof. Assume G is connected. Partition the vertices into levels according to their distance from some vertex v. Let L(!) be the number of vertices on level l. If r is the maximum distance of any vertex from v, define additional levels -1 and r + 1 contain- ing no vertices. 
+Let l1 be the level such that the sum of costs in levels 0 through 1, −1 is less than 1/2, but the sum of costs in levels 0 through I, is at least 1/2. (If no such l, exists, the total cost of all vertices is less than 1/2, and B = C=Ø satisfies the theorem.) Let k be the number of vertices on levels 0 through I. Find a level lo such that lo≤1, and \L(lo)\+2(l,−1)≤2√k. Find a level l2 such that l1 +1≤12 and \L(12)| +2(12−l, −1) ≤ 2√n-k. If two such levels exist, then by Lemma 3 the vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor C has cost exceeding 2/3, and C contains no more than 2(√k+√n-k) vertices. But 2(√k+√n-k)≤2(√n/2+√n/2)=2√2√n. Thus the theorem holds if suitable levels l。 and l1⁄2 exist. 
+Suppose a suitable level lo does not exist. Then, for i≤l, L(i)≥2√k-2(l, −i). Since L(0) = 1, this means 1≥2√k-211, and l1+1/2 ≥√k. Thus l1 = [1, +1/2] ≥ {√k], and 
+k 
+= 
+Ź 
+i=0 
+L(i) ≥ 
+i=41 = {√k | 
+2√k−2(l; −i)≥ (4√k−2[√k])({√k} +1)/2 ≥√k([√k] + 1)>k. 
+This is a contradiction. A similar contradiction arises if a suitable level 12 does not exist. This completes the proof for connected graphs. 
+Now suppose G is not connected. Let G1, G2,, Gk be the connected components of G, with vertex sets V1, V2, Vk, respectively. If no connected component has total vertex cost exceeding 1/3, let i be the minimum index such that the total cost of V, UVU UV, exceeds 1/3. Let A V, UV2U UV, let 
+= V1U B = Vi+U Vi+2 U U Vk, and let C = Ø. Since i is minimum and the cost of V does not exceed 1/3, the cost of A does not exceed 2/3. Thus the theorem is 
+true. 
+If some connected component (say G) has total vertex cost between 1/3 and 2/3, let A = V1, B = V1U U V1 - 1 U V11 U U Vk, and C = Ø. Then the theorem is 
+true. 
+-1 
+i+1 
+Finally, if some connected component (say G;) has total vertex cost exceeding 2/3, apply the above argument to G. Let A*, B*, C* be the resulting partition. Let A be the set among A* and B* with greater cost, let C = C*, and let B be the remaining vertices of G. Then A and B have cost not exceeding 2/3 and the theorem is true. 
+A SEPARATOR THEOREM 
+183 
+32: 
+This proves the theorem for all planar graphs. In all cases the separator C is either empty or contained in only one connected component of G. 
+Corollary 2 (√n-separator theorem). Let G be any n-vertex planar graph. The vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor B contains more than 2n/3 vertices, and C contains no more than 2√2√n vertices. 
+Proof. Assign to each vertex of G a cost of 1/n. The corollary follows from Theorem 4. O 
+It is natural to ask whether the constant factor of 2/3 in Theorem 1 can be reduced to 1/2 if the constant factor of 2√2 is allowed to increase. The answer is yes. 
+COROLLARY 3. Let G be any n-vertex planar graph having nonnegative vertex costs summing to no more than one. Then the vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor B has total cost exceeding 1/2, and C contains no more than 2√2√n/(1 −√2/3) vertices. 
+Proof. Let G = (V,E) be an n-vertex planar graph. We shall define sequences of sets (A), (B), (C.), (D;) such that: 
+(i) A1, B1, C, D; partition V, 
+(ii) no edge joins A; with B¡, A; with D¡, or B; with D¡, 
+(iii) the cost of A, is no greater than the cost of B; and the cost of B, is no greater than the cost of A, UCUD, 
+(iv) |D;|≤2\D;-1|/3. 
+= 
+Let Ao Bo Co= Ø, Do= V. Then (i)-(iv) hold. If A,-1, Bi-1, Ci-1, D¡-1 have been defined and D¡-1 ‡ Ø, let G* be the subgraph of G induced by the vertex set Di-1. Let A*, B*, C* be a vertex partition satisfying Corollary 2 on G*. Without loss of generality, suppose A* has no more cost than B*. Let A, be the set among A-UA, B-1 with less cost, let B; be the set among A-UA*, Bi-1 with greater cost, let C; = C-1UC*, and let D1 = B*. Then (i), (ii), (iii), and (iv) hold for A, B, C, Di. 
+Let k be the largest index for which Ak, Bk, Ck, Dk are defined. Then Dk = Ø. Let A = A, B = Bk, C = Ck. By (i), A, B, C partition V. By (ii), no edge joins a vertex in A with a vertex in B. By (iii), neither A nor B has cost exceeding 1/2. By (iv), the total number of vertices in C is bounded by 
+Σ 2√2√(2/3)/2= 
+== --- 
+i=0 
+2√2√n 1-√2/3 
+O 
+Another natural question is whether graphs which are "almost" planar have a √n-separator theorem. The finite element method of numerical analysis gives rise to one interesting class of almost-planar graphs. We shall extend Theorem 4 to apply to such graphs. 
+A finite element graph is any graph formed from a planar embedding of a planar graph by adding all possible diagonals to each face. (The finite element graph has a clique corresponding to each face of the embedded planar graph.) The embedded planar graph is called the skeleton of the finite element graph and each of its faces is an element of the finite element graph. 
+THEOREM 5. Let G be an n-vertex finite element graph with nonnegative vertex corts summing to no more than one. Suppɔse no element of G has more than k boundary vertices. Then the vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor B has total cost exceeding 2/3, and C contains no more than 4[k/2}√n vertices. 
+184 
+RICHARD J. LIPTON AND ROBERT ENDRE TARJAN 
+Proof. Let G* be the skeleton of G. Form G** from G* by inserting one new vertex into each face of G* containing four or more vertices and connecting the new vertex to each vertex on the boundary of the face. Then G** is planar. Apply Theorem 4 to G**. Let A**, B**, C** be the resulting vertex partition. This partition satisfies the theorem except that certain edges in G but not in G** may join A** and B**. These edges are diagonals of certain faces of G*; call these bad faces. Each bad face must contain one of the new vertices added to G* to form G**, and this vertex must be in C**. 
+Form G from C** by deleting all new vertices and adding to G**, for each bad face, either the set of vertices in A** on the boundary of the bad face, or the set of vertices in B** on the boundary of the bad face, whichever is smaller. Let A be the remaining old vertices in A** and let B** be the remaining old vertices in B**. Then no edge in G joins A and B, neither A nor B contains more than 2»/3 vertices, and C contains no more than 2√21k/2]√n + a vertices, where a is the number of faces of G* containing four or more vertices. By use of Euler's theorem, it is not hard to show that the number of faces of G* containing four or more vertices is at most n −2. Thus 0 IC≤ [k/2]√n, and the theorem is true. 
+Corollary 4. Let G be any n-vertex finite element graph. Suppose no element of G has more than k boundary vertices. The vertices of G can be partitioned into three sets A, B, C such that no edge joins a vertex in A with a vertex in B, neither A nor B contains more than 2n/3 vertices and C contains no more than 41k/2]√n vertices. 
+The last result of this section shows that Theorem 4 and its corollaries are tight to within a constant factor; that is, if f(n) = o(√n), no f(n)-separator theorem holds for planar graphs. 
+THEOREM 6. For any k, let G = (V, E) be a k × k square grid graph (a k × k square section of the infinite grid graph in Fig. 1). Let A be any subset of V such that an A≤n/2, where n = k2 and a is a positive constant less than 1/2. The the number 
+of vertices in V-A adjacent to some vertex in A is at least k· min {1/2, 
+Proof. Without loss of generality, suppose that the number r of rows of G which contain vertices in A is no less than the number c of columns of G which contain vertices in A. Then an Arc≤r2 and r√ak. 
+If r* is the number of rows of G which contain only vertices in A, then kr* |A≤ n/2, and r≤k/2. Let S = {xe V: x is adjacent to a vertex of A}. If r* = 0, then S≥r Vak. If r*0, then r = k and S≥r-r* =k-r* ≥k|2. O 
+It is an open problem to determine the smallest constant factor which can replace 2√2 in Theorem 4. 
+3. An algorithm for finding a good partition. The proof of Theorem 4 leads to an algorithm for finding a vertex partition satisfying the theorem. To make this algorithm efficient, we need a good representation of a planar embedding of a graph. For this purpose we use a list structure whose elements correspond to the edges of the graph. Stored with each edge are its endpoints and four pointers, designating the edges immediately clockwise and counter-clockwise around each of the endpoints of the edge. Stored with each vertex is some incident edge. Figure 5 gives an example of such a data structure. 
+PARTITIONING ALGORITHM. 
+Step 1. Find a planar embedding of G and construct a representation for it of the kind described above. 
+Time: O(n), using the algorithm of [10]. 
+A SEPARATOR THEOREM 
+3 
+1 
+2 
+Vertex incidences 
+Edges and neighbors 
+C1 
+CC1 C2 
+CC2 
+es 
+2 
+es 
+e2 
+ei 
+1 
+e, 
+22 
+1 
+3 
+ei 
+e3 
+26 
+་ 
+es 
+2 
+ei 
+es 
+1 
+4 
+ez 
+ei 
+es 
+e6 
+3 
+e2 
+ez 
+e6 
+CA 
+2 
+3 
+es 
+4 
+e3 
+es 
+2 
+4 
+ei 
+e2 
+e6 
+e6 
+3 
+4 
+ez 
+ei 
+es 
+185 
+FIG. 5. Representation of an embedded planar graph. (c = clockwise, cc = counter-clockwise.) 
+Step 2. Find the connected components of G and determine the cost of each one. If none has cost exceeding 2/3, construct the partition as described in the proof of Theorem 4. If some component has cost exceeding 2/3, go to Step 3. 
+Time: O(n) [9]. 
+Step 3. Find a breadth-first spanning tree of the most costly component. Compute the level of each vertex and the number of vertices L(I) in each level l. 
+Time: O(n). 
+Step 4. Find the level 1, such that the total cost of levels 0 through l1 – 1 does not exceed 1/2, but the total cost of levels 0 through I, does exceed 1/2. Let k be the number of vertices in levels 0 through /1. 
+Time: O(n). 
+Step 5. Find the highest level 1, 1, such that L()+2(1, −lo)≤2vk. Find the lowest level l2 l1 + 1 such that L(/2) + 2(l2 − l1 − 1 ) ≤ 2√n-k. 
+-- 
+Time: O(n). 
+Step 6. Delete all vertices on level 2 and above. Construct a new vertex x to represent all vertices on levels 0 through lý. Construct a Boolean table with one entry per vertex. Initialize to true the entry for each vertex on levels 0 through 1, and 
+¡ 
+" 
+By 
+186 
+RICHARD J. LIPTON AND ROBERT ENDRE TARJAN 
+(a) 
+6 
+(b) (1,4), (2,4), (2,6), (2,3), (3,2), (3,6), (3,5), (1,5) 
+(c) 
+6 
+5 
+FIG. 6. Shrinking a subtree of a planar graph. 
+(a) Original graph. Subtree denoted by 
+man. 
+(b) Edges scanned around subtree. Those forming loops and multiple edges in shrunken graph 
+are crossed out. 
+(c) Shrunken graph. Vertex 0 replaces subtree. 
+initialize to false the entry for each vertex on levels lo +1 through 2-1. The vertices on levels 0 through lo correspond to a subtree of the breadth-first spanning tree generated in Step 3. Scan the edges incident to this tree clockwise around the tree. When scanning an edge (v, w) with u in the tree, check the table entry for w. If it is true, delete edge (v, w). If it is false, change it to true, construct an edge (x, w), and delete edge (v, w). The result of this step is a planar representation of the shrunken graph to which Lemma 2 is to be applied. See Fig. 6. 
+Time: O(n). 
+Step 7. Construct a breadth-first spanning tree rooted at x in the new graph. (This can be done be modifying the breadth-first spanning tree constructed in Step 3.) Record, for each vertex v, the parent of v in the tree, and the total cost of all descendants of v including v itself. Make all faces of the new graph into triangles by scanning the boundary of each face and adding (nontree) edges as necessary. 
+Time: O(n). 
+Step 8. Choose any nontree edge (v1, w1). Locate the corresponding cycle by following parent pointers from v1 and w1. Compute the cost on each side of this cycle by scanning the tree edges incident on either side of the cycle and summing their associated costs. If (v, w) is a tree edge with v on the cycle and w not on the cycle, the cost associated with (v, w) is the descendant cost of w if v is the parent of w, and the cost of all vertices minus the descendant cost of v if w is the parent of v. Determine which side of the cycle has greater cost and call it the “inside”. See Fig. 7. 
+Time: O(n). 
+.06 
+16 
+.08 
+A SEPARATOR THEOREM 
+.04 
+10 
+.96 
+.06 
+12 
+02 
+6.98 
+root 
+.04 
+.02 
+08 
+187 
+FIG. 7. Cycle constructed in Step 8. All vertices have cost .02. Numbers on vertices are descendant costs. The total cost inside the cycle is .48, outside the cycle is .34, and on the cycle is .18. 
+Step 9. Let (v, w) be the nontree edge whose cycle is the current candidate to complete the separator. If the cost inside the cycle exceeds 2/3, find a better cycle by the following method. 
+Locate the triangle (v., y, w;) which has (v,, w;) as a boundary edge and lies inside the (v, w) cycle. If either (v,, y) or (y, w;) is a tree edge, let (v1+1, wi+1) be the nontree edge among (v, y) and (y, w,). Compute the cost inside the (vi+1, wi+1) cycle from the cost inside the (v1, w;) cycle and the cost of v1, y, and w1. See Fig. 4. 
+If neither (v1, y) nor (y, w;) is a tree edge, determine the tree path from y to the (v, w) cycle by following parent pointers from y. Let z be the vertex on the (v, w) cycle reached during this search. Compute the total cost of all vertices except z on this tree path. Scan the tree edges inside the (y, w;) cycle, alternately scanning an edge in one cycle and an edge in the other cycle. Stop scanning when all edges inside one of the cycles have been scanned. Compute the cost inside this cycle by summing the associated costs of all scanned edges. Use this cost, the cost inside the (v, w) cycle, and the cost on the tree path from y to z to compute the cost inside the other cycle. Let (+1, Wi+1) be the edge among (v,, y) and (y, w,) whose cycle has more cost inside 
+it. 
+Repeat Step 9 until finding a cycle whose inside has cost not exceeding 2/3. 
+Time: O(n) (see proof below). 
+Step 10. Use the cycle found in Step 9 and the levels found in Step 4 to construct a satisfactory vertex partition as described in the proof of Lemma 3. Extend this partition from the connected component chosen in Step 2 to the entire graph as described in the proof of Theorem 4. 
+Time: O(n). 
+This completes our presentation of the algorithm. All steps except Step 9 obviously run in O(n) time. We urge readers to fill in the details of this algorithm; we content ourselves here with proving that Step 9 requires O(n) time. 
+Proof of Step 9 time bound. Each iteration of Step 9 deletes at least one face (rom the inside of the current cycle. Thus Step 9 terminates after O(n) iterations. The total 
+188 
+RICHARD J. LIPTON AND ROBERT ENDRE TARJAN 
+running time of one iteration of Step 9 is O(1) plus time proportional to the length of the tree path from y to z plus time proportional to the number of edges scanned inside the (v1, y) and (y, w;) cycles. Each vertex on the tree path from y to z (except z) is inside the current cycle but on the boundary or outside of all subsequent cycles. For every two edges scanned during an iteration of Step 9, at least one edge is inside the current cycle but outside all subsequent cycles. It follows that the total time spent traversing tree paths and scanning edges, during all iterations of Step 9, is O(n). Thus the total time spent in Step 9 is O(n). 
+By making minor modifications to this algorithm, one can construct an O(n) time algorithm to find a vertex partition satisfying Theorem 5, and O(n) time algorithms to find vertex partitions satisfying Corollary 2 and Corollary 4. 
+4. Applications. The separator theorem proved in § 2 allows us to obtain many new complexity results since it opens the way for efficient application of divide-and- conquer on planar graphs. We mention a few such applications here; we shall present the details in a subsequent paper. 
+Generalized nested dissection. Any system of linear equations whose sparsity structure corresponds to a planar or finite element graph can be solved in O(n3/2) time and O(n log n) space. This result generalizes the nested dissection method of George [5]. 
+Pebbling. Any n-vertex planar acyclic directed graph with maximum in-degree k can be pebbled using O(n+k log n) pebbles. See [8], [16] for a description of the pebble game. 
+The post office problem. Knuth's "post office" problem [11] can be solved in O((log n)) time and O(n) space. See [3], [17] for previous results. 
+Data structure embedding problems Any planar data structure can be efficiently. embedded into a balanced binary tree. See [2], [14] for a description of the problem and some related results. 
+Lower bounds on Boolean circuits. Any planar circuit for computing Boolean convolution contains at least cn gates for some positive constant c. 
+cn2 
+Appendix. Graph-theoretic definitions. A graph G = (V,E) consists of a set V of vertices and a set E of edges. Each edge is an unordered pair (v, w) of distinct vertices. If (v, w) is an edge, v and w are adjacent and (v, w) is incident to both v and w. A path of length k with endpoints v, w is a sequence of vertices v = vo, V1, U2, ・ ・ ・ , Uk = W such that (v-1, v) is an edge for I≤i≤k. If all the vertices vo, V1, Uk – are distinct, the path is simple. If v = w, the path is a cycle. The distance from u to w is the length of the shortest path from v to w. (The distance is infinite if v and w are not joined by a path.) The level of a vertex v in a graph G with respect to a fixed root r is the distance from r 
+to v. 
+1 
+1 
+2 
+If G1 = (V,E) and G2 = (V2, E2) are graphs, G, is a subgraph of G2 if V, V2 and E1E. G1 is a generalized subgraph of G2 if V1 ≤ V2 and there is a mapping f from E, into the set of paths of G2 such that, for each edge (v, w)€ E1, f((v, w)) has endpoints and w, and no two paths f((v1, w1)) and f((v2, w2)) share a vertex except possibly an endpoint of both paths. If G = (V1, E1) is a graph and V, ≤ V1, the graph G1 = (V1, E1) where E1 = E2N{(v, w)|v, w € V1} is the subgraph of G2 induced by the vertex set V1. If G1 = (V1, E1) is a subgraph of G2 = (V2, E2), then shrinking G, to a single vertex in G means forming a new graph G from G2 by deleting from G2 all vertices in V, and all their incident edges, adding a new vertex x to G2, anu adding a new edge (x, w) to G2 for each edge (v, w)E E, such that ve V, and we V1. 
+A graph is connected if any two vertices in it are joined by a path. The connected components of a graph are its maximal connected subgraphs. A clique is a graph such 
+A SEPARATOR THEOREM 
+189 
+that any two vetices are joined by an edge. A tree is a connected graph containing no cycles. We shall generally assume that a tree has a distinguished vertex, called a root. If T is a tree with root r and v is on the (unique) simple path from r to w, ɛ is an ancestor or w and w is a descendant of v. If in addition (v, w) is an edge of T, then u is the parent of w and w is a child of v. The radius of a tree is the maximum distance of any vertex from the root. A spanning tree T of a graph G is a subgraph of G which is a tree and which contains all the vertices of G. T is a breadth-first spanning tree with respect to a root r if, for any vertex v, the distance from r to v in T is equal to the distance from 7 to v in G. 
+A graph G = (V, E) is planar if there is a one-to-one map ƒ¡ from v into points in the plane and a map ƒ1⁄2 from E into simple curves in the plane such that, for each edge (v, w)ɛ E, fɔ((v, w)) has endpoints fi(v) and f2(w), and no two curves ƒ2((v1, w1)), f2((v, w)) share a point except possibly a common endpoint. Such a pair of maps f1. f2 is a planar embedding of G. The connected planar regions formed when the ranges of ƒ and ƒ1⁄2 are deleted from the plane are called the faces of the embedding. Each face is bounded by a curve corresponding to a cycle of G, called the boundary of the face. We shall sometimes not distinguish between a face and its boundary. A diagonal of a face is an edge (v, w) such that v and w are nonadjacent vertices on the boundary of the face. 
+Acknowledgments. We would like to thank Stanley Eisenstat, Rich A. DeMillo, Robert Floyd, Donald Rose, and Daniel Sleator for many helpful discussions and much thoughtful criticism. 
+REFERENCES 
+[1] A. V. AHO, J. E. HOPCROFT AND J. D. ULLMAN, The Design and Analysis of Computer Algorithms, 
+Addison-Wesley, Reading, MA, 1974. 
+[2] R. A. DEMILLO, S. C. Eisenstat and R. J. Lipton, Preserving average proximity in arrays. 
+Georgia Institute of Tech., Tech. Rep., Atlanta, 1976. 
+[3] D. DOBKIN AND R. J. LIPTON, Multi-dimensional searching problems, SIAM J. Comput., 5 (1976), 
+pp. 181-186. 
+[4] P. ERDÖS, R. L. GRAHAM AND E. SZEMERÉDI, On sparse graphs with dense long paths, STAN-CS- 
+75-504, Computer Sci. Dept., Stanford Univ., Stanford, CA, 1975. 
+[5] J. A. GEORGE, Nested dissection of a regular finite element mesh, SIAM J. Numer. Anal., 10 (1973). 
+pp. 345-367. 
+[6] D. W. HALL AND G. SPENCER, Elementary Topology, John Wiley, New York, 1955. 
+[7] F. HARARY, Graph Theory, Addison-Wesley, Reading, MA, 1969. 
+[8] J. HOPCROft, W. Paul and L. Valiant, On time versus space, J. Assoc. Comput. Mach., 24 
+(1977), pp. 332-337. 
+[9] J. E. HOPCROFT AND R. E. TARJAN, Efficient algorithms for graph manipulation, Comm. ACM, 16 
+(1973), pp. 372-378. 
+[10] 
+Efficient planarity testing, J. Assoc. Comput. Mach., 21 (1974), pp. 549–568. [11] D. E. KNUTH, The Art of Computer Programming, Volume 3: Sorting and Searching, Addison-Wesley, 
+Reading, MA, 1973. 
+[12] C. Kuratowski, Sur le problème des corbes gauches en topologie, Fund. Math., 15 (1930). pp. 
+271-283. 
+[13] P. M. Lewis, R. E. Stearns and J. Hartmanis, Memory bounds for recognition of context-free and context-sensitive languages, IEEE Conference on Switching Theory and Logical Design. IEEE, New York, 1965, pp. 191–202. 
+[14] R. J. LIPTON, S. C. EISENstat and R. A. DEMILLO, Space and time hierarchies for classes of control 
+structures and data structures, J. Assoc. Comput. Mach., 23 (1976), pp. 710-732. 
+[15] M. S. PATERSON, Tape bounds for time-bounded Turing machines, J. Comput. System Sci., 6 (1972), 
+pp. 116-124. 
+[16] W. J. PAUL, R. E. Tarjan and J. R. CelONI, Space bounds for a game on graphs, Maths. Systems 
+Theory, 10 (1977), pp. 239–251. 
+[17] M. J. SHAMOS, Problems in computational geometry, unpublished manuscript. 
