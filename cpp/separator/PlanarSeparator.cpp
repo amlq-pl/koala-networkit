@@ -299,6 +299,8 @@ void PlanarSeparator::run() {
 
     // Step 9: iteratively shrink the cycle until insideCost <= 2/3 * total.
 
+    int i = 1;
+
     // ---- Step 10: extract separator and partitions back to G ----
     extractSeparatorAndPartitions(G, lvl, l0, l2, cycle, x, side);
   }
