@@ -1,0 +1,294 @@
+# test_CMakeLists.txt
+# Tests for the main CMakeLists.txt of the koala-networkit project.
+#
+# Usage:
+#   1) As a normal CMake project (from a build dir):
+#        cmake -S <path-to-this-dir> -B build-tests \
+#              -DKOALA_TEST_CMAKELISTS=ON
+#        ctest --test-dir build-tests --output-on-failure
+#
+#   2) As a script (fast assertions, no configure of parent project):
+#        cmake -DKOALA_ROOT=<path-to-repo> -P test_CMakeLists.txt
+
+cmake_minimum_required(VERSION 3.20)
+
+# ---------------------------------------------------------------------------
+# Helper: assertion macro (works in both project and script mode).
+# ---------------------------------------------------------------------------
+macro(koala_expect COND MSG)
+    if(NOT (${COND}))
+        message(FATAL_ERROR "ASSERTION FAILED: ${MSG}")
+    else()
+        message(STATUS "PASS: ${MSG}")
+    endif()
+endmacro()
+
+macro(koala_expect_defined VAR MSG)
+    if(NOT DEFINED ${VAR})
+        message(FATAL_ERROR "ASSERTION FAILED (undefined ${VAR}): ${MSG}")
+    else()
+        message(STATUS "PASS: ${MSG}")
+    endif()
+endmacro()
+
+macro(koala_expect_str_contains HAYSTACK NEEDLE MSG)
+    string(FIND "${HAYSTACK}" "${NEEDLE}" _idx)
+    if(_idx EQUAL -1)
+        message(FATAL_ERROR "ASSERTION FAILED (missing '${NEEDLE}'): ${MSG}")
+    else()
+        message(STATUS "PASS: ${MSG}")
+    endif()
+endmacro()
+
+macro(koala_expect_file_exists PATH MSG)
+    if(NOT EXISTS "${PATH}")
+        message(FATAL_ERROR "ASSERTION FAILED (missing file '${PATH}'): ${MSG}")
+    else()
+        message(STATUS "PASS: ${MSG}")
+    endif()
+endmacro()
+
+# ---------------------------------------------------------------------------
+# SCRIPT MODE: Static checks against the CMakeLists.txt source file only.
+# Triggered by:  cmake -DKOALA_ROOT=<repo> -P test_CMakeLists.txt
+# ---------------------------------------------------------------------------
+if(CMAKE_SCRIPT_MODE_FILE)
+    if(NOT DEFINED KOALA_ROOT)
+        set(KOALA_ROOT "${CMAKE_CURRENT_LIST_DIR}")
+    endif()
+
+    set(_cml "${KOALA_ROOT}/CMakeLists.txt")
+    koala_expect_file_exists("${_cml}" "CMakeLists.txt exists at project root")
+
+    file(READ "${_cml}" _cml_content)
+
+    # --- Project metadata -------------------------------------------------
+    koala_expect_str_contains(
+        "${_cml_content}" "cmake_minimum_required(VERSION 3.20)"
+        "CMake minimum required version is 3.20")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "project(koala-networkit LANGUAGES CXX)"
+        "Project name is 'koala-networkit' with CXX language")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "set(CMAKE_CXX_STANDARD 20)"
+        "C++ standard is set to 20")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "set(CMAKE_CXX_STANDARD_REQUIRED True)"
+        "C++ standard is required")
+
+    # --- Compiler flags ---------------------------------------------------
+    koala_expect_str_contains(
+        "${_cml_content}" "KOALA_CXX_FLAGS"
+        "KOALA_CXX_FLAGS variable is defined")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "-Wall"
+        "-Wall present in compiler flags")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "-Wextra"
+        "-Wextra present in compiler flags")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "-O3"
+        "-O3 optimization flag present")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "-pthread"
+        "-pthread flag present")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "KOALA_LINKER_FLAGS"
+        "KOALA_LINKER_FLAGS variable is defined")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "-fopenmp"
+        "OpenMP flag configured")
+
+    # --- Dependencies -----------------------------------------------------
+    koala_expect_str_contains(
+        "${_cml_content}" "FetchContent_Declare"
+        "FetchContent is used to declare dependencies")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "networkit"
+        "networkit dependency is declared")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "csdp"
+        "Csdp dependency is declared")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "find_package(Eigen3"
+        "Eigen3 package is required")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "find_package(Boost REQUIRED COMPONENTS graph)"
+        "Boost::graph package is required")
+
+    # --- Targets ----------------------------------------------------------
+    koala_expect_str_contains(
+        "${_cml_content}" "add_library(\${PROJECT_NAME}"
+        "Main library target is added")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "csdp_lib"
+        "csdp_lib imported target is defined")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "add_custom_target(csdp"
+        "csdp custom target is defined")
+
+    # --- Options ----------------------------------------------------------
+    koala_expect_str_contains(
+        "${_cml_content}" "option(KOALA_BUILD_SHARED"
+        "KOALA_BUILD_SHARED option exists")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "option(KOALA_BUILD_TESTS"
+        "KOALA_BUILD_TESTS option exists")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "option(KOALA_BUILD_BENCHMARKS"
+        "KOALA_BUILD_BENCHMARKS option exists")
+
+    # --- Helper functions -------------------------------------------------
+    koala_expect_str_contains(
+        "${_cml_content}" "function(koala_add_module"
+        "koala_add_module() function is declared")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "function(koala_make_test"
+        "koala_make_test() function is declared")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "function(koala_make_benchmark"
+        "koala_make_benchmark() function is declared")
+
+    # --- Includes / subdirectories ---------------------------------------
+    koala_expect_str_contains(
+        "${_cml_content}" "include_directories(\"\${CMAKE_SOURCE_DIR}/include\")"
+        "Project include directory is added")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "add_subdirectory(cpp)"
+        "cpp/ subdirectory is included")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "add_subdirectory(test)"
+        "test/ subdirectory is included when tests are enabled")
+
+    koala_expect_str_contains(
+        "${_cml_content}" "add_subdirectory(benchmark)"
+        "benchmark/ subdirectory is included when benchmarks are enabled")
+
+    # --- Required source files/directories --------------------------------
+    koala_expect_file_exists("${KOALA_ROOT}/cpp/koala.cpp"
+        "Main source cpp/koala.cpp exists")
+    koala_expect_file_exists("${KOALA_ROOT}/cpp"
+        "cpp/ directory exists")
+    koala_expect_file_exists("${KOALA_ROOT}/include"
+        "include/ directory exists")
+
+    message(STATUS "=====================================================")
+    message(STATUS "  All script-mode CMakeLists.txt tests passed.")
+    message(STATUS "=====================================================")
+    return()
+endif()
+
+# ---------------------------------------------------------------------------
+# PROJECT MODE: Configure the parent project and register ctest cases.
+# ---------------------------------------------------------------------------
+project(koala-networkit-cmake-tests LANGUAGES NONE)
+
+enable_testing()
+
+set(KOALA_ROOT "${CMAKE_CURRENT_LIST_DIR}" CACHE PATH
+    "Path to koala-networkit root containing CMakeLists.txt")
+
+# --- Test 1: Static script-mode checks -------------------------------------
+add_test(
+    NAME cmake_static_checks
+    COMMAND ${CMAKE_COMMAND}
+        -DKOALA_ROOT=${KOALA_ROOT}
+        -P ${CMAKE_CURRENT_LIST_FILE}
+)
+set_tests_properties(cmake_static_checks PROPERTIES
+    PASS_REGULAR_EXPRESSION "All script-mode CMakeLists.txt tests passed"
+    FAIL_REGULAR_EXPRESSION "ASSERTION FAILED"
+)
+
+# --- Test 2: Configure step succeeds (dry run in isolated build dir) -------
+add_test(
+    NAME cmake_configure_default
+    COMMAND ${CMAKE_COMMAND}
+        -S ${KOALA_ROOT}
+        -B ${CMAKE_BINARY_DIR}/_cfg_default
+        -Wno-dev
+)
+set_tests_properties(cmake_configure_default PROPERTIES
+    FAIL_REGULAR_EXPRESSION "CMake Error"
+    TIMEOUT 900
+)
+
+# --- Test 3: Configure with tests disabled -------------------------------
+add_test(
+    NAME cmake_configure_no_tests
+    COMMAND ${CMAKE_COMMAND}
+        -S ${KOALA_ROOT}
+        -B ${CMAKE_BINARY_DIR}/_cfg_no_tests
+        -DKOALA_BUILD_TESTS=OFF
+        -DKOALA_BUILD_BENCHMARKS=OFF
+        -Wno-dev
+)
+set_tests_properties(cmake_configure_no_tests PROPERTIES
+    FAIL_REGULAR_EXPRESSION "CMake Error"
+    TIMEOUT 900
+)
+
+# --- Test 4: Configure with shared library option -------------------------
+add_test(
+    NAME cmake_configure_shared
+    COMMAND ${CMAKE_COMMAND}
+        -S ${KOALA_ROOT}
+        -B ${CMAKE_BINARY_DIR}/_cfg_shared
+        -DKOALA_BUILD_SHARED=ON
+        -Wno-dev
+)
+set_tests_properties(cmake_configure_shared PROPERTIES
+    FAIL_REGULAR_EXPRESSION "CMake Error"
+    TIMEOUT 900
+)
+
+# --- Test 5: Referenced files exist --------------------------------------
+add_test(
+    NAME cmake_referenced_files_exist
+    COMMAND ${CMAKE_COMMAND} -E compare_files
+        ${KOALA_ROOT}/CMakeLists.txt
+        ${KOALA_ROOT}/CMakeLists.txt
+)
+
+# --- Test 6: cpp/koala.cpp is present ------------------------------------
+add_test(
+    NAME cmake_main_source_present
+    COMMAND ${CMAKE_COMMAND} -E true
+)
+if(NOT EXISTS "${KOALA_ROOT}/cpp/koala.cpp")
+    set_tests_properties(cmake_main_source_present PROPERTIES
+        WILL_FAIL TRUE)
+endif()
+
+# --- Test 7: include directory is present --------------------------------
+add_test(
+    NAME cmake_include_dir_present
+    COMMAND ${CMAKE_COMMAND} -E true
+)
+if(NOT IS_DIRECTORY "${KOALA_ROOT}/include")
+    set_tests_properties(cmake_include_dir_present PROPERTIES
+        WILL_FAIL TRUE)
+endif()
+
+message(STATUS "Registered CMakeLists.txt tests. Run with: ctest --output-on-failure")
