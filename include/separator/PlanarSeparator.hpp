@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_set>
 #include <vector>
 
 #include <networkit/base/Algorithm.hpp>
@@ -18,8 +19,10 @@ public:
     std::vector<NetworKit::node> B;
   };
 
-  explicit PlanarSeparator(const NetworKit::Graph &graph,
-                           std::vector<double> &vertexCost);
+  PlanarSeparator(const NetworKit::Graph &graph,
+                  const std::vector<double> &vertexCost);
+
+  explicit PlanarSeparator(const NetworKit::Graph &graph);
 
   void run() override;
 
@@ -32,7 +35,7 @@ public:
 private:
   const NetworKit::Graph &graph;
 
-  std::vector<double> &vertexCost;
+  std::vector<double> vertexCost;
 
   Partition partition;
   enum class Side : uint8_t { OUTSIDE = 0, ON_CYCLE = 1, INSIDE = 2 };
@@ -42,14 +45,13 @@ private:
   bool areConnectedComponentsEligibleForPartition(
       NetworKit::ConnectedComponents &components);
 
-  NetworKit::Graph
-  findLargestCostComponent(NetworKit::ConnectedComponents &components);
-
-  std::vector<Side>
-  markInsideOutside(const NetworKit::Graph &G,
-                    const std::vector<NetworKit::node> &cycle);
-
   void findSeparatorFromComponents(NetworKit::ConnectedComponents &components);
+
+  // Sets partition.separator to the given set, then greedily distributes the
+  // connected components of `graph \ separatorNodes` into partition.A and
+  // partition.B keeping every component whole (so no A-B edge can exist).
+  void assignComponentsToSides(
+      const std::unordered_set<NetworKit::node> &separatorNodes);
 
   void extractSeparatorAndPartitions(const NetworKit::Graph &G,
                                      const std::vector<NetworKit::node> &lvl,

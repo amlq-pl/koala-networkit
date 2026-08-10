@@ -163,8 +163,8 @@ CostComputation computeSidesCost(cycle_t &cycle, planar_embedding_t &embedding,
                                  std::vector<NetworKit::node> &parent,
                                  std::vector<double> &costs,
                                  NetworKit::node root) {
-  int arcTrueCost = 0;
-  int arcFalseCost = 0;
+  double arcTrueCost = 0.0;
+  double arcFalseCost = 0.0;
 
   int cycleSize = cycle.size();
 
@@ -182,7 +182,7 @@ CostComputation computeSidesCost(cycle_t &cycle, planar_embedding_t &embedding,
       if (w == prev || w == u)
         continue; // skip cycle neighbors
 
-      int cost = 0;
+      double cost = 0.0;
       if (parent[w] == v) {
         cost = costs[w];
       } else if (parent[v] == w) {
@@ -205,35 +205,36 @@ CostComputation computeSidesCost(cycle_t &cycle, planar_embedding_t &embedding,
 
   return {insideCost, outsideCost, isTrueArcInside};
 }
-
-NetworKit::node findTriangleApex(planar_embedding_t &embedding,
-                                 NetworKit::node v, NetworKit::node w,
-                                 NetworKit::node otherCycleNeighbor,
-                                 bool isTrueArcInside) {
-  auto &neighborsV = embedding[v];
-  int deg = static_cast<int>(neighborsV.size());
-
-  int posW = rotationPosition(embedding, v, w);
-  int posOther = rotationPosition(embedding, v, otherCycleNeighbor);
-
-  int posAfter = wrapIndex(posW + 1, deg);
-  int posBefore = wrapIndex(posW - 1, deg);
-
-  bool afterIsInside =
-      (isOnInsideArc(posAfter, posOther, posW) == isTrueArcInside);
-
-  return neighborsV[afterIsInside ? posAfter : posBefore];
-}
 } // namespace
 
 namespace Koala {
 
 PlanarSeparator::PlanarSeparator(const NetworKit::Graph &graph,
-                                 std::vector<double> &costs)
+                                 const std::vector<double> &costs)
     : graph(graph), vertexCost(costs) {}
+
+PlanarSeparator::PlanarSeparator(const NetworKit::Graph &graph)
+    : graph(graph), vertexCost(graph.upperNodeIdBound(), 1.0) {}
 
 void PlanarSeparator::run() {
   cleanPartitions();
+
+  // Nothing to separate in an empty graph.
+  if (graph.numberOfNodes() == 0) {
+    hasRun = true;
+    return;
+  }
+
+  // Normalize the vertex costs so they sum to 1, matching the paper's model
+  // ("nonnegative vertex costs summing to no more than one"). Every balance
+  // bound is then the literal constant 2/3, never a multiple of an arbitrary
+  // total.
+  double totalCost = 0.0;
+  graph.forNodes([&](NetworKit::node v) { totalCost += vertexCost[v]; });
+  if (totalCost > 0.0) {
+    graph.forNodes([&](NetworKit::node v) { vertexCost[v] /= totalCost; });
+  }
+
   // Step 1: Find a planar embedding of the graph G
   auto embedding = PlanarGraphTools::findPlanarEmbedding(graph);
 
@@ -266,31 +267,49 @@ void PlanarSeparator::run() {
     std::partial_sum(verticesAtLevel.begin(), verticesAtLevel.end(),
                      prefixSum.begin());
 
+    // Cost accumulated per BFS level (the weighted analogue of the counts).
+    std::vector<double> costAtLevel(verticesAtLevel.size(), 0.0);
+    double costG = 0.0;
+    G.forNodes([&](NetworKit::node v) {
+      costAtLevel[lvl[v]] += vertexCost[v];
+      costG += vertexCost[v];
+    });
+    std::vector<double> prefixCost(costAtLevel.size());
+    std::partial_sum(costAtLevel.begin(), costAtLevel.end(),
+                     prefixCost.begin());
+
     // Step 4: Find level l1, and k
-    // l1 is the smallest level such that the number of vertices in levels 0..l1
-    // is at least n/2
+    // l1 is the smallest level such that the total cost of levels 0..l1 is at
+    // least half of the total cost of G.
     NetworKit::node l1 =
-        std::lower_bound(prefixSum.begin(), prefixSum.end(), n / 2) -
-        prefixSum.begin();
-    // k is the number of vertices in levels 0..l1
+        std::lower_bound(prefixCost.begin(), prefixCost.end(), 0.5 * costG) -
+        prefixCost.begin();
+    if (l1 >= verticesAtLevel.size())
+      l1 = verticesAtLevel.size() - 1;
+    // k is the number of vertices in levels 0..l1 (drives the sqrt bounds).
     NetworKit::count k = prefixSum[l1];
 
     // Step 5: Find levels l0 and l2
-    // l0 is the largest level such that the number of vertices in level l0 +
-    // 2*(l1-l0) is at most 2*sqrt(k)
+    // l0 is the largest level <= l1 such that |L(l0)| + 2*(l1-l0) <= 2*sqrt(k).
+    // The condition is not monotone, so scan downward from l1 and take the
+    // first (largest) level that satisfies it.
     NetworKit::node l0 = 0;
-    for (int i = 0; i <= l1; i++) {
-      if (verticesAtLevel[i] + 2 * (l1 - i) <= 2 * sqrt(k)) {
-        l0 = i;
-      } else
+    for (int i = static_cast<int>(l1); i >= 0; i--) {
+      if (verticesAtLevel[i] + 2.0 * (static_cast<int>(l1) - i) <=
+          2.0 * std::sqrt(static_cast<double>(k))) {
+        l0 = static_cast<NetworKit::node>(i);
         break;
+      }
     }
-    // l2 is the smallest level such that the number of vertices in level l2 +
-    // 2*(l2-l1-1) is at most 2*sqrt(n-k)
+    // l2 is the smallest level > l1 such that
+    // |L(l2)| + 2*(l2-l1-1) <= 2*sqrt(n-k). If none exists (e.g. l1 is the last
+    // level) it defaults to l1+1, a virtual empty ring below the middle.
     NetworKit::node l2 = l1 + 1;
-    for (int i = l1 + 1; i < verticesAtLevel.size(); i++) {
-      if (verticesAtLevel[i] + 2 * (i - l1 - 1) <= 2 * sqrt(n - k)) {
-        l2 = i;
+    for (int i = static_cast<int>(l1) + 1;
+         i < static_cast<int>(verticesAtLevel.size()); i++) {
+      if (verticesAtLevel[i] + 2.0 * (i - static_cast<int>(l1) - 1) <=
+          2.0 * std::sqrt(static_cast<double>(n - k))) {
+        l2 = static_cast<NetworKit::node>(i);
         break;
       }
     }
@@ -349,14 +368,16 @@ void PlanarSeparator::run() {
     // thousands of vertices).
     {
       std::vector<std::pair<NetworKit::node, size_t>> stk;
-      costsH[x] = 1;
+      // x is the contracted super-vertex (levels <= l0); it has no cost of its
+      // own. Every other node contributes its own vertex cost.
+      costsH[x] = 0.0;
       stk.emplace_back(x, 0);
       while (!stk.empty()) {
         NetworKit::node v = stk.back().first;
         size_t &idx = stk.back().second;
         if (idx < childrenH[v].size()) {
           NetworKit::node c = childrenH[v][idx++];
-          costsH[c] = 1;
+          costsH[c] = vertexCost[c];
           stk.emplace_back(c, 0);
         } else {
           NetworKit::node finished = v;
@@ -397,65 +418,32 @@ void PlanarSeparator::run() {
       return;
     }
 
-    auto computeParams =
-        computeSidesCost(cycle, embeddingH, parentH, costsH, x);
-
-    // if the cost of inside > 2/3 we move to step 9
-
-    cycle_t ci = cycle;
-    NetworKit::node vi = v1;
-    NetworKit::node wi = w1;
-    bool isTrueArcInsideI = computeParams.insideIsClockwiseArc;
-    double cost = computeParams.insideCost;
-    if (computeParams.insideCost > 2.0 / 3) {
-      while (cost > 2.0 / 3) {
-        NetworKit::node otherNeighbor = findNodeInCycleAtIthPosition(ci, 1);
-        NetworKit::node y = findTriangleApex(embeddingH, vi, wi, otherNeighbor,
-                                             isTrueArcInsideI);
-        if (isTreeEdge(vi, y, parentH) || isTreeEdge(wi, y, parentH)) {
-          NetworKit::node v_next;
-          NetworKit::node w_next;
-
-          if (!isTreeEdge(vi, y, parentH)) {
-            v_next = vi;
-            w_next = y;
-          } else {
-            v_next = y;
-            w_next = wi;
-          }
-
-          auto cycleNext =
-              buildFundamentalCycle(v_next, w_next, parentH).value();
-
-          auto costParamsNext =
-              computeSidesCost(cycleNext, embeddingH, parentH, costsH, x);
-
-          cost = costParamsNext.insideCost;
-          isTrueArcInsideI = costParamsNext.insideIsClockwiseArc;
-          ci = cycleNext;
-          vi = v_next;
-          wi = w_next;
-        } else {
-          auto R1 = buildFundamentalCycle(vi, y, parentH).value();
-          auto R2 = buildFundamentalCycle(y, wi, parentH).value();
-          auto costParamsR1 =
-              computeSidesCost(R1, embeddingH, parentH, costsH, x);
-          auto costParamsR2 =
-              computeSidesCost(R2, embeddingH, parentH, costsH, x);
-
-          cost = fmax(costParamsR1.insideCost, costParamsR2.insideCost);
-          isTrueArcInsideI = costParamsR1.insideCost >= costParamsR2.insideCost
-                                 ? costParamsR1.insideIsClockwiseArc
-                                 : costParamsR2.insideIsClockwiseArc;
-          ci = costParamsR1.insideCost >= costParamsR2.insideCost ? R1 : R2;
-          vi = costParamsR1.insideCost >= costParamsR2.insideCost ? vi : y;
-          wi = costParamsR1.insideCost >= costParamsR2.insideCost ? y : wi;
-        }
+    // Steps 8-9 (O(n^2) variant). By Lemma 2, among all nontree edges of the
+    // triangulated graph, the fundamental cycle that minimizes the larger of
+    // its two side costs separates the graph so that neither side exceeds 2/3.
+    // The linear-time variant reaches that cycle by iteratively shrinking one
+    // candidate; here we instead price every nontree edge's fundamental cycle
+    // and keep the best one. The triangulation edges (including those closing
+    // the outer face) are exactly the extra nontree edges that make a balanced
+    // cycle available even when the spanning tree is shallow (e.g. a wheel
+    // rooted at its hub, whose balanced separator is a hub-to-rim "diameter").
+    // Cost: O(n) nontree edges times O(n) to price each cycle, i.e. O(n^2).
+    double bestInside =
+        computeSidesCost(cycle, embeddingH, parentH, costsH, x).insideCost;
+    H.forEdges([&](NetworKit::node a, NetworKit::node b) {
+      if (isTreeEdge(a, b, parentH))
+        return;
+      auto candidateOpt = buildFundamentalCycle(a, b, parentH);
+      if (!candidateOpt || candidateOpt->size() < 3)
+        return;
+      double inside =
+          computeSidesCost(candidateOpt.value(), embeddingH, parentH, costsH, x)
+              .insideCost;
+      if (inside < bestInside) {
+        bestInside = inside;
+        cycle = candidateOpt.value();
       }
-      cycle = ci;
-    }
-
-    // Step 9: iteratively shrink the cycle until insideCost <= 2/3 * total.
+    });
 
     // ---- Step 10: extract separator and partitions back to G ----
     extractSeparatorAndPartitions(G, lvl, l0, l2, cycle, x);
@@ -463,87 +451,116 @@ void PlanarSeparator::run() {
   hasRun = true;
 }
 
-std::vector<PlanarSeparator::Side>
-PlanarSeparator::markInsideOutside(const NetworKit::Graph &G,
-                                   const std::vector<NetworKit::node> &cycle) {
-  std::vector<PlanarSeparator::Side> side(G.upperNodeIdBound());
-  std::vector<bool> vis(G.upperNodeIdBound(), false);
-  std::queue<NetworKit::node> Q;
-  for (auto v : cycle) {
-    side[v] = PlanarSeparator::Side::ON_CYCLE;
-    vis[v] = true;
-  }
-
-  G.forNodes([&](NetworKit::node v) {
-
+void PlanarSeparator::assignComponentsToSides(
+    const std::unordered_set<NetworKit::node> &separatorNodes) {
+  // Connected components of graph \ separatorNodes, each with its total cost.
+  // Keeping every component whole guarantees that no edge ever crosses between
+  // A and B.
+  std::vector<std::pair<double, std::vector<NetworKit::node>>> components;
+  std::vector<bool> visited(graph.upperNodeIdBound(), false);
+  graph.forNodes([&](NetworKit::node s) {
+    if (visited[s] || separatorNodes.count(s) > 0)
+      return;
+    std::vector<NetworKit::node> comp;
+    double compCost = 0.0;
+    std::queue<NetworKit::node> Q;
+    Q.push(s);
+    visited[s] = true;
+    while (!Q.empty()) {
+      NetworKit::node u = Q.front();
+      Q.pop();
+      comp.push_back(u);
+      compCost += vertexCost[u];
+      graph.forNeighborsOf(u, [&](NetworKit::node w) {
+        if (!visited[w] && separatorNodes.count(w) == 0) {
+          visited[w] = true;
+          Q.push(w);
+        }
+      });
+    }
+    components.emplace_back(compCost, std::move(comp));
   });
+
+  partition.separator.assign(separatorNodes.begin(), separatorNodes.end());
+
+  // Longest-processing-time greedy: assign the costliest component to the
+  // lighter side. The separator (Lemma 2 / Lemma 3) guarantees every component
+  // has cost at most 2/3 and the total is at most 1, so both sides stay within
+  // the 2/3 bound.
+  std::sort(components.begin(), components.end(),
+            [](const auto &a, const auto &b) { return a.first > b.first; });
+
+  double costA = 0.0;
+  double costB = 0.0;
+  for (auto &[compCost, comp] : components) {
+    if (costA <= costB) {
+      partition.A.insert(partition.A.end(), comp.begin(), comp.end());
+      costA += compCost;
+    } else {
+      partition.B.insert(partition.B.end(), comp.begin(), comp.end());
+      costB += compCost;
+    }
+  }
 }
 
 void PlanarSeparator::extractSeparatorAndPartitions(
     const NetworKit::Graph &G, const std::vector<NetworKit::node> &lvl,
     NetworKit::node l0, NetworKit::node l2,
-    const std::vector<NetworKit::node> &cycle, NetworKit::node x) {}
+    const std::vector<NetworKit::node> &cycle, NetworKit::node x) {
+  // The separator is the two level rings L(l0) and L(l2) (which keep the
+  // above / middle / below regions apart) together with the cycle vertices
+  // (which split the middle into its inside and outside). The contracted
+  // super-vertex x is virtual and is never part of the graph.
+  std::unordered_set<NetworKit::node> separatorNodes;
+  G.forNodes([&](NetworKit::node v) {
+    if (lvl[v] == l0 || lvl[v] == l2)
+      separatorNodes.insert(v);
+  });
+  for (auto c : cycle) {
+    if (c != x)
+      separatorNodes.insert(c);
+  }
+
+  assignComponentsToSides(separatorNodes);
+}
+
+void PlanarSeparator::fallbackLevelSeparator(
+    const std::vector<NetworKit::node> &lvl, NetworKit::node l1) {
+  // Degenerate case (no usable fundamental cycle): fall back to the BFS level
+  // l1 as the separator. It splits the component into levels < l1 and > l1,
+  // each holding less than half of the cost.
+  std::unordered_set<NetworKit::node> separatorNodes;
+  for (NetworKit::node v = 0; v < lvl.size(); v++) {
+    if (lvl[v] == l1 && graph.hasNode(v))
+      separatorNodes.insert(v);
+  }
+
+  assignComponentsToSides(separatorNodes);
+}
 
 bool PlanarSeparator::areConnectedComponentsEligibleForPartition(
     NetworKit::ConnectedComponents &components) {
-
-  return highestCost < 2.0 / 3;
-}
-
-NetworKit::Graph PlanarSeparator::findLargestCostComponent(
-    NetworKit::ConnectedComponents &components) {
-  NetworKit::Graph mostCostly;
-  double highestCost = -1.0;
-
-  for (auto cc : components.getComponents()) {
+  // Costs are normalized to sum to 1, so "eligible" means no single component
+  // has cost exceeding 2/3: then the whole components can be split into two
+  // sides each within 2/3, with an empty separator. Otherwise the heavy
+  // component must be separated further.
+  double highestCost = 0.0;
+  for (const auto &cc : components.getComponents()) {
     double ccCost = 0.0;
-    for (auto v : cc) {
+    for (auto v : cc)
       ccCost += vertexCost[v];
-    }
-
-    if (ccCost > highestCost) {
-      mostCostly = cc;
-      highestCost = ccCost;
-    }
+    highestCost = std::max(highestCost, ccCost);
   }
+
+  return highestCost <= 2.0 / 3.0;
 }
 
 void PlanarSeparator::findSeparatorFromComponents(
     NetworKit::ConnectedComponents &components) {
-
-  auto largestComponent =
-      components.extractLargestConnectedComponent(graph, false);
-  NetworKit::count n = this->graph.numberOfNodes();
-
-  // in both cases the separator will be empty, so we do not assign it
-  // explicitly
-
-  if (largestComponent.numberOfNodes() < n / 3) {
-    int totalSize = 0;
-    for (auto component : components.getComponents()) {
-      if (totalSize < n / 3) {
-        partition.A.insert(partition.A.end(), component.begin(),
-                           component.end());
-        totalSize += component.size();
-      } else {
-        partition.B.insert(partition.B.end(), component.begin(),
-                           component.end());
-      }
-    }
-  } else {
-    // largestComponent has cost > 2/3, put its nodes in A, rest in B
-    std::unordered_set<NetworKit::node> largestNodes;
-    largestComponent.forNodes(
-        [&](NetworKit::node v) { largestNodes.insert(v); });
-
-    partition.A.assign(largestNodes.begin(), largestNodes.end());
-
-    graph.forNodes([&](NetworKit::node v) {
-      if (largestNodes.find(v) == largestNodes.end()) {
-        partition.B.push_back(v);
-      }
-    });
-  }
+  (void)components;
+  // No single component exceeds 2/3 of the total cost, so an empty separator
+  // suffices: distribute whole components across the two sides.
+  assignComponentsToSides(std::unordered_set<NetworKit::node>{});
 }
 
 void PlanarSeparator::cleanPartitions() {

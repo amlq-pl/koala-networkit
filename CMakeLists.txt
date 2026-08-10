@@ -49,7 +49,12 @@ FetchContent_MakeAvailable(csdp)
 
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
-find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+find_package(Eigen3 3.4 NO_MODULE)
+if(NOT Eigen3_FOUND)
+    # Fall back to any available Eigen (e.g. system Eigen 5.x, whose config
+    # rejects an exact 3.4 request via same-major-version matching).
+    find_package(Eigen3 REQUIRED NO_MODULE)
+endif()
 
 add_custom_target(csdp ALL
     COMMAND CFLAGS=-I"${CMAKE_SOURCE_DIR}/lib/csdp/include" make libsdp.a
