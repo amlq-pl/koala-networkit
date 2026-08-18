@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stack>
+
 #include "VertexColoring.hpp"
 
 #include "recognition/CographRecognitionOther.hpp"

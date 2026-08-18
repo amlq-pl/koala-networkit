@@ -1,37 +1,32 @@
 #include "separator/EpsilonPlanarSeparator.hpp"
 #include "networkit/Globals.hpp"
 #include "networkit/components/ConnectedComponents.hpp"
-#include "networkit/graph/Graph.hpp"
-#include "networkit/graph/GraphTools.hpp"
+#include "separator/GraphUtils.hpp"
 #include "separator/PlanarSeparator.hpp"
 #include <queue>
-#include <unordered_set>
 #include <vector>
 
 namespace {
-std::pair<std::vector<NetworKit::Graph>, std::vector<NetworKit::Graph>>
-findCostlyComponents(const NetworKit::Graph &G, std::vector<double> &costs,
-                     double epsilon) {
-  std::vector<NetworKit::Graph> costlyCCs;
-  std::vector<NetworKit::Graph> rest;
-  NetworKit::ConnectedComponents components(G);
-  components.run();
-  auto ccs = components.getComponents();
-
-  for (auto &cc : ccs) {
-    double cost = 0.0;
-    for (auto v : cc)
-      cost += costs[v];
-
-    if (cost > epsilon)
-      costlyCCs.push_back(NetworKit::GraphTools::subgraphFromNodes(
-          G, std::unordered_set<NetworKit::node>(cc.begin(), cc.end())));
-    else
-      rest.push_back(NetworKit::GraphTools::subgraphFromNodes(
-          G, std::unordered_set<NetworKit::node>(cc.begin(), cc.end())));
+double getComponentCost(const std::vector<NetworKit::node> &cc,
+                        std::vector<double> &vCost) {
+  double c = 0.0;
+  for (auto v : cc) {
+    c += vCost[v];
   }
 
-  return {costlyCCs, rest};
+  return c;
+}
+
+void processSide(
+    std::vector<NetworKit::node> partition, std::vector<double> &vertexCost,
+    std::unordered_map<int, std::vector<NetworKit::node>> &idToComponentMap,
+    double epsilon, std::queue<int> &Q, int &idCnt) {
+
+  double cost = getComponentCost(partition, vertexCost);
+  int newId = idCnt++;
+  idToComponentMap[newId] = std::move(partition);
+  if (cost > epsilon)
+    Q.push(newId);
 }
 
 } // namespace
@@ -55,45 +50,56 @@ EpsilonPlanarSeparator::EpsilonPlanarSeparator(
 
 void EpsilonPlanarSeparator::run() {
   separator.clear();
-  connectedComponents.clear();
 
-  std::queue<NetworKit::Graph> Q;
-  processComponents(graph, vertexCost, epsilon, Q);
+  int idCnt = 0;
+  std::unordered_map<int, std::vector<NetworKit::node>> idToComponentMap;
+  std::queue<int> Q;
+
+  NetworKit::ConnectedComponents algoCCs(graph);
+  algoCCs.run();
+
+  for (std::vector<NetworKit::node> &cc : algoCCs.getComponents()) {
+    double cost = getComponentCost(cc, vertexCost);
+    if (cost > epsilon)
+      Q.push(idCnt);
+    idToComponentMap[idCnt++] = std::move(cc);
+  }
 
   while (!Q.empty()) {
-    NetworKit::Graph K = std::move(Q.front());
+    int curId = Q.front();
     Q.pop();
 
-    PlanarSeparator sep(K, vertexCost);
-    sep.run();
-    const auto &partition = sep.getPartition();
+    auto comp = idToComponentMap[curId];
+    auto K = getInducedSubgraph(graph, comp);
 
-    for (auto v : partition.separator)
-      separator.push_back(v);
+    std::vector<double> kCost(comp.size());
+    for (size_t i = 0; i < kCost.size(); i++) {
+      kCost[i] = vertexCost[comp[i]];
+    }
 
-    auto graphA = NetworKit::GraphTools::subgraphFromNodes(
-        K, std::unordered_set<NetworKit::node>(partition.A.begin(),
-                                               partition.A.end()));
-    auto graphB = NetworKit::GraphTools::subgraphFromNodes(
-        K, std::unordered_set<NetworKit::node>(partition.B.begin(),
-                                               partition.B.end()));
+    auto mapFromInducedToOriginal = [&](const std::vector<NetworKit::node> &vec)
+        -> std::vector<NetworKit::node> {
+      std::vector<NetworKit::node> newVec(vec.size());
+      for (size_t i = 0; i < vec.size(); i++) {
+        newVec[i] = comp[vec[i]];
+      }
 
-    processComponents(graphA, vertexCost, epsilon, Q);
-    processComponents(graphB, vertexCost, epsilon, Q);
+      return newVec;
+    };
+
+    PlanarSeparator sepAlgo(K, kCost);
+    sepAlgo.run();
+
+    for (auto v : sepAlgo.getSeparator())
+      separator.push_back(comp[v]);
+
+    processSide(mapFromInducedToOriginal(sepAlgo.getPartitionA()), vertexCost,
+                idToComponentMap, epsilon, Q, idCnt);
+
+    processSide(mapFromInducedToOriginal(sepAlgo.getPartitionB()), vertexCost,
+                idToComponentMap, epsilon, Q, idCnt);
   }
+
   hasRun = true;
-}
-
-void EpsilonPlanarSeparator::processComponents(
-    const NetworKit::Graph &graph, std::vector<double> &vertexCost,
-    double epsilon, std::queue<NetworKit::Graph> &Q) {
-  auto [costlyCCs, cheapCCs] = findCostlyComponents(graph, vertexCost, epsilon);
-
-  for (auto &cc : cheapCCs)
-    connectedComponents.push_back(cc);
-
-  for (auto &cc : costlyCCs) {
-    Q.emplace(cc);
-  }
 }
 } // namespace Koala

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stack>
+
 #include "Clique.hpp"
 
 #include "recognition/CographRecognitionOther.hpp"

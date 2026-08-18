@@ -2,12 +2,13 @@
 #include "networkit/base/Algorithm.hpp"
 #include "networkit/graph/Graph.hpp"
 #include <map>
+#include <queue>
 #include <vector>
+
 namespace Koala {
 class EpsilonPlanarSeparator : public NetworKit::Algorithm {
 public:
   std::vector<NetworKit::node> separator;
-  std::vector<NetworKit::Graph> connectedComponents;
 
   void run() override;
 

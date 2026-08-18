@@ -58,6 +58,17 @@ NetworKit::Graph convert_boost_to_networKit(
 
 planar_embedding_t findPlanarEmbedding(const NetworKit::Graph& G, bool verbose = false) {
     auto [boost_graph, node_map] = convert_networKit_to_boost(G);
+    // Number the edges 0..m-1 so Boost's Boyer-Myrvold has a valid edge_index.
+    // The internal edge_index property is otherwise left uninitialized (all 0),
+    // which makes the planarity test emit a wrong/degenerate embedding on some
+    // graphs (e.g. wheels). makeMaximalPlanar does the same numbering.
+    {
+        auto e_index = get(edge_index, boost_graph);
+        graph_traits<boost_graph_t>::edges_size_type ecnt = 0;
+        graph_traits<boost_graph_t>::edge_iterator ei, ei_end;
+        for (boost::tie(ei, ei_end) = edges(boost_graph); ei != ei_end; ++ei)
+            put(e_index, *ei, ecnt++);
+    }
     embedding_storage_t embedding_storage(num_vertices(boost_graph));
     embedding_t embedding(embedding_storage.begin(), get(vertex_index, boost_graph));
 

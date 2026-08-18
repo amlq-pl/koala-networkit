@@ -1,46 +1,145 @@
 #include "separator/PlanarSeparatorVertexCover.hpp"
 #include "networkit/Globals.hpp"
-#include "networkit/graph/EdgeUtils.hpp"
-#include "networkit/graph/Graph.hpp"
+#include "networkit/graph/GraphTools.hpp"
+#include "separator/MISP.hpp"
+#include <bit>
+#include <optional>
+#include <queue>
 #include <vector>
 
 namespace Koala {
 PlanarSeparatorVertexCover::PlanarSeparatorVertexCover(NetworKit::Graph &G)
     : graph(G) {}
 
+Bipartite
+PlanarSeparatorVertexCover::bipartite(std::vector<bool> &U,
+                                      std::vector<int> &deg_residual) {
+  std::queue<NetworKit::node> Q;
+  std::vector<int> label(graph.upperNodeIdBound(), 0);
+  graph.forNodes([&](NetworKit::node t) {
+    if (!U[t] && deg_residual[t] > 2) {
+      label[t] = '+';
+      Q.push(t);
+    }
+  });
+  while (!Q.empty()) {
+    auto v = Q.front();
+    Q.pop();
+
+    graph.forNeighborsOf(v, [&](NetworKit::node t) {
+      if (!U[t] && label[t] == 0) {
+        if (label[v] == '+')
+          label[t] = '-';
+        else
+          label[t] = '+';
+
+        Q.push(t);
+      }
+    });
+  }
+
+  std::vector<bool> isInX(graph.upperNodeIdBound(), false);
+  std::vector<bool> isInY(graph.upperNodeIdBound(), false);
+  std::vector<int> degB(graph.upperNodeIdBound(), 0);
+
+  for (int i = 0; i < static_cast<int>(label.size()); i++) {
+    if (label[i] == '+') {
+      isInX[i] = true;
+      graph.forNeighborsOf(i, [&](NetworKit::node t) {
+        if (label[t] == '-') {
+          degB[i]++;
+          degB[t]++;
+        }
+      });
+    }
+    if (label[i] == '-')
+      isInY[i] = true;
+  }
+
+  graph.forNodes([&](NetworKit::node v) {
+    if (!U[v] && degB[v] < 2)
+      Q.push(v);
+  });
+
+  while (!Q.empty()) {
+    auto v = Q.front();
+    Q.pop();
+    if (!isInX[v] && !isInY[v])
+      continue;
+
+    isInX[v] = false;
+    isInY[v] = false;
+    if (degB[v] == 0)
+      continue;
+    graph.forNeighborsOf(v, [&](NetworKit::node t) {
+      bool bEdge = (label[v] == '+' && label[t] == '-') ||
+                   (label[v] == '-' && label[t] == '+');
+      if (bEdge && (isInX[t] || isInY[t]) && --degB[t] < 2)
+        Q.push(t);
+    });
+  }
+
+  Bipartite bip = {{}, {}};
+
+  for (size_t i = 0; i < isInX.size(); i++) {
+    if (isInX[i])
+      bip.X.push_back(i);
+  }
+
+  for (size_t i = 0; i < isInY.size(); i++) {
+    if (isInY[i])
+      bip.Y.push_back(i);
+  }
+
+  return bip;
+}
+
 void PlanarSeparatorVertexCover::run() {
   std::vector<bool> VC(graph.upperNodeIdBound());
   std::vector<bool> U(graph.upperNodeIdBound());
+  size_t n = graph.upperNodeIdBound();
   bool stop = false;
-
-  std::vector<std::vector<int>> adj;
 
   while (!stop) {
     std::vector<int> deg_residual(graph.upperNodeIdBound());
-    graph.forNodes(
-        [&](NetworKit::node v) { deg_residual[v] = graph.degree(v); });
+    graph.forNodes([&](NetworKit::node v) {
+      if (U[v])
+        return;
+      int d = 0;
+      graph.forNeighborsOf(v, [&](NetworKit::node t) {
+        if (!U[t])
+          d++;
+      });
+      deg_residual[v] = d;
+    });
+
     std::queue<NetworKit::node> Q;
     graph.forNodes([&](NetworKit::node v) {
-      if (deg_residual[v] < 2)
+      if (!U[v] && deg_residual[v] < 2)
         Q.push(v);
     });
 
     while (!Q.empty()) {
-      auto v = Q.back();
+      auto v = Q.front();
       Q.pop();
+
+      if (U[v])
+        continue;
 
       if (deg_residual[v] == 0) {
         U[v] = true;
       }
-
       if (deg_residual[v] == 1) {
-        auto u = graph.getIthNeighbor(v, 0);
+        NetworKit::node u = NetworKit::none;
+        graph.forNeighborsOf(v, [&](NetworKit::node t) {
+          if (u == NetworKit::none && !U[t])
+            u = t;
+        });
         U[v] = true;
         U[u] = true;
         VC[u] = true;
-
         graph.forNeighborsOf(u, [&](NetworKit::node t) {
-          if (--deg_residual[t] < 2)
+          if (!U[t] && --deg_residual[t] < 2)
             Q.push(t);
         });
       }
@@ -57,18 +156,18 @@ void PlanarSeparatorVertexCover::run() {
       if (!vis[i]) {
         std::vector<std::pair<NetworKit::node, int>> seen_deg_pair;
         Q.push(i);
+        vis[i] = true;
 
         while (!Q.empty()) {
           auto v = Q.front();
           Q.pop();
-
-          vis[v] = true;
 
           seen_deg_pair.push_back({v, deg_residual[v]});
 
           graph.forNeighborsOf(v, [&](NetworKit::node t) {
             if (!(vis[t] || U[t])) {
               Q.push(t);
+              vis[t] = true;
             }
           });
         }
@@ -82,98 +181,131 @@ void PlanarSeparatorVertexCover::run() {
         }
 
         if (all_degs_two) {
-          auto first = seen_deg_pair.front().first;
-          auto cur = first;
+          size_t len = seen_deg_pair.size();
+          auto cur = seen_deg_pair.front().first;
           auto prev = NetworKit::none;
-          bool go = true;
-          int i = 1;
 
-          while (go) {
-            auto neighborRange = graph.neighborRange(cur);
+          for (size_t k = 0; k < len; k++) {
+            if (k % 2 == 0)
+              VC[cur] = true;
+
             NetworKit::node next = NetworKit::none;
-            for (auto v : neighborRange) {
-              if (v != prev) {
+            for (auto v : graph.neighborRange(cur)) {
+              if (v != prev && !U[v]) {
                 next = v;
                 break;
               }
             }
 
-            if (i++ % 2 == 1)
-              VC[cur] = true;
             U[cur] = true;
-
             prev = cur;
             cur = next;
-            if (cur == first)
-              go = false;
           }
         }
-      }
-      // bipartite finding
-      std::vector<int> label(graph.upperNodeIdBound(), 0);
-      graph.forNodes([&](NetworKit::node t) {
-        if (!U[t] && deg_residual[t] > 2) {
-          label[t] = '+';
-          Q.push(t);
-        }
-      });
-      while (!Q.empty()) {
-        auto v = Q.front();
-        Q.pop();
-
-        graph.forNeighborsOf(v, [&](NetworKit::node t) {
-          if (!U[t] && label[t] == 0) {
-            if (label[v] == '+')
-              label[t] = '-';
-            else
-              label[t] = '+';
-
-            Q.push(t);
-          }
-        });
-      }
-
-      std::vector<bool> isInX(graph.upperNodeIdBound(), false);
-      std::vector<bool> isInY(graph.upperNodeIdBound(), false);
-      std::vector<int> degB(graph.upperNodeIdBound(), 0);
-
-      for (int i = 0; i < static_cast<int>(label.size()); i++) {
-        if (label[i] == '+') {
-          isInX[i] = true;
-          graph.forNeighborsOf(i, [&](NetworKit::node t) {
-            if (label[t] == '-') {
-              degB[i]++;
-              degB[t]++;
-            }
-          });
-        }
-        if (label[i] == '-')
-          isInY[i] = true;
-      }
-
-      graph.forNodes([&](NetworKit::node v) {
-        if (!U[v] && degB[v] < 2)
-          Q.push(v);
-      });
-
-      while (!Q.empty()) {
-        auto v = Q.front();
-        Q.pop();
-
-        isInX[v] = false;
-        isInY[v] = false;
-        auto u = graph.getIthNeighbor(v, 0);
-
-        graph.forNeighborsOf(u, [&](NetworKit::node t) {
-          if ((isInX[t] || isInY[t]) && --degB[t] < 2)
-            Q.push(t);
-        });
       }
     }
+
+    // bipartite finding
+    auto bipGraph = bipartite(U, deg_residual);
+
+    size_t UTrueSize = 0;
+    for (auto v : U) {
+      if (v)
+        UTrueSize++;
+    }
+    size_t VminusUSize = n - UTrueSize;
+    if (bipGraph.Y.size() >= (1.0 / 6) * VminusUSize) {
+      for (auto v : bipGraph.X) {
+        VC[v] = true;
+        U[v] = true;
+      }
+      for (auto v : bipGraph.Y)
+        U[v] = true;
+    }
+
+    if (bipGraph.Y.size() < (1.0 / 6) * VminusUSize || VminusUSize == 0)
+      stop = true;
+  }
+
+  size_t UTrueSize = 0;
+  for (auto v : U) {
+    if (v)
+      UTrueSize++;
+  }
+  if (n - UTrueSize == 0) {
+    for (size_t i = 0; i < VC.size(); i++) {
+      if (VC[i])
+        vertexCover.push_back(i);
+    }
+  } else {
+    std::unordered_set<NetworKit::node> residualNodes;
+    graph.forNodes([&](NetworKit::node v) {
+      if (!U[v])
+        residualNodes.insert(v);
+    });
+    const NetworKit::Graph residualGraph =
+        NetworKit::GraphTools::subgraphFromNodes(graph, residualNodes);
+    double loglog =
+        std::max(1.0, std::log2(std::log2((double)std::max<size_t>(4, n))));
+    double epsilon =
+        loglog / std::max<size_t>(1, residualGraph.numberOfNodes());
+    MISP<NetworKit::node> mispAlgo(
+        residualGraph, epsilon,
+        [&](const NetworKit::Graph &cc) -> std::vector<NetworKit::node> {
+          std::vector<NetworKit::node> indpSet;
+          std::vector<NetworKit::node> mapCompactToOriginal(cc.numberOfNodes());
+          std::unordered_map<NetworKit::node, int> mapOriginalToCompact;
+          int i = 0;
+          cc.forNodes([&](NetworKit::node v) {
+            mapOriginalToCompact[v] = i;
+            mapCompactToOriginal[i++] = v;
+          });
+          std::vector<unsigned long long> adj(cc.numberOfNodes());
+          cc.forEdges([&](NetworKit::node eu, NetworKit::node ev) {
+            auto v = mapOriginalToCompact[ev];
+            auto u = mapOriginalToCompact[eu];
+            adj[v] = adj[v] | (1ULL << u);
+            adj[u] = adj[u] | (1ULL << v);
+          });
+
+          unsigned long long maxIndpSet = 0;
+          unsigned int maxSize = 0;
+          for (size_t i = 0; i < (1ULL << adj.size()); i++) {
+            bool valid = true;
+            for (size_t j = 0; j < adj.size(); j++) {
+              if (((i >> j) & 1ULL) && (adj[j] & i) != 0) {
+                valid = false;
+                break;
+              }
+            }
+            if (valid) {
+              size_t count = std::popcount(i);
+              if (count > maxSize) {
+                maxSize = count;
+                maxIndpSet = i;
+              }
+            }
+          }
+          for (size_t i = 0; i < adj.size(); i++) {
+            if ((maxIndpSet & (1ULL << i)) != 0)
+              indpSet.push_back(mapCompactToOriginal[i]);
+          }
+
+          return indpSet;
+        });
+    mispAlgo.run();
+
+    std::unordered_set<NetworKit::node> isSet(
+        mispAlgo.maximum_independent_set.begin(),
+        mispAlgo.maximum_independent_set.end());
+    for (auto v : residualNodes)
+      if (!isSet.count(v))
+        vertexCover.push_back(v);
+    for (size_t i = 0; i < VC.size(); i++)
+      if (VC[i])
+        vertexCover.push_back(i);
   }
 
   hasRun = true;
 }
-
-void PlanarSeparatorVertexCover::prep() {}
 } // namespace Koala
