@@ -2,21 +2,95 @@
 #include "matching/MaximumMatching.hpp"
 #include "networkit/Globals.hpp"
 #include "networkit/graph/EdgeUtils.hpp"
-#include "networkit/graph/Graph.hpp"
 #include "separator/GraphUtils.hpp"
 #include "separator/MISP.hpp"
+#include <algorithm>
 #include <queue>
+#include <unordered_set>
 
 namespace {
+struct Action {
+  int deg;
+  NetworKit::node v = 0, u = 0, w = 0;
+};
+
 std::vector<NetworKit::Edge> getExactMatching(NetworKit::Graph &graph) {
   Koala::EdmondsMaximumMatching m(graph, false);
   m.run();
   return m.getMatching();
 }
 
-void removeVertex();
-void removeEdge();
-void contract();
+inline void
+insertEdgeIntoMatching(std::unordered_set<NetworKit::node> &matched_nodes,
+                       std::unordered_set<NetworKit::Edge> &S,
+                       NetworKit::Edge e) {
+  S.insert(e);
+  matched_nodes.insert(e.u);
+  matched_nodes.insert(e.v);
+}
+
+inline void removeVertex(int &currentGraphSize, NetworKit::node v,
+                         std::vector<Action> &stk) {
+  stk.push_back({0, v});
+  currentGraphSize--;
+}
+
+inline void removeEdge(int &currentGraphSize, NetworKit::node v,
+                       std::queue<NetworKit::node> &Q,
+                       std::vector<std::unordered_set<NetworKit::node>> &adj,
+                       std::vector<Action> &stk) {
+  NetworKit::node u = *adj[v].begin();
+  stk.push_back({1, v, u});
+  for (auto x : adj[u]) {
+    adj[x].erase(u);
+    if (adj[x].size() <= 2)
+      Q.push(x);
+  }
+  adj[v].clear();
+  adj[u].clear();
+  currentGraphSize -= 2;
+}
+
+inline void contract(int &currentGraphSize, NetworKit::node v,
+                     std::queue<NetworKit::node> &Q,
+                     std::vector<std::unordered_set<NetworKit::node>> &adj,
+                     std::vector<Action> &stk) {
+  auto it = adj[v].begin();
+  NetworKit::node u = *it;
+  NetworKit::node w = *std::next(it);
+  NetworKit::node x = adj.size();
+  adj.push_back({});
+  std::unordered_set<NetworKit::node> seen;
+  for (auto t : adj[u]) {
+    if (t != v) {
+      adj[t].erase(u);
+      adj[t].insert(x);
+      if (seen.find(t) == seen.end()) {
+        adj[x].insert(t);
+        seen.insert(t);
+      }
+    }
+  }
+
+  for (auto t : adj[w]) {
+    if (t != v) {
+      adj[t].erase(w);
+      adj[t].insert(x);
+      if (seen.find(t) == seen.end()) {
+        adj[x].insert(t);
+        seen.insert(t);
+      }
+    }
+  }
+  adj[v].clear();
+  adj[u].clear();
+  adj[w].clear();
+  if (adj[x].size() <= 2)
+    Q.push(x);
+
+  stk.push_back({2, v, u, w});
+  currentGraphSize -= 2;
+}
 } // namespace
 
 namespace Koala {
@@ -24,11 +98,6 @@ PlanarSeparatorMatching::PlanarSeparatorMatching(NetworKit::Graph &G)
     : graph(G) {}
 
 void PlanarSeparatorMatching::run() { hasRun = true; }
-
-struct Action {
-  int deg;
-  NetworKit::node v = 0, u = 0, w = 0;
-};
 
 std::vector<NetworKit::Edge>
 PlanarSeparatorMatching::reduce_procedure(NetworKit::Graph &graph) {
@@ -56,20 +125,10 @@ PlanarSeparatorMatching::reduce_procedure(NetworKit::Graph &graph) {
   bool stop = false;
   while (!stop) {
     if (currentGraphSize <= loglog) {
-      NetworKit::Graph induced(adj.size());
-      for (size_t i = 0; i < adj.size(); ++i) {
-        if (adj[i].size() > 0) {
-          for (auto u : adj[i]) {
-            if (i < u)
-              induced.addEdge(i, u);
-          }
-        }
-      }
+      NetworKit::Graph induced = getInducedSubgraphFromAdj(adj);
       auto matching = getExactMatching(induced);
-      for (NetworKit::Edge e : matching) {
-        S.insert(e);
-        matched_nodes.insert(e.u);
-        matched_nodes.insert(e.v);
+      for (auto e : matching) {
+        insertEdgeIntoMatching(matched_nodes, S, e);
       }
       stop = true;
     } else if (!Q.empty()) {
@@ -80,67 +139,17 @@ PlanarSeparatorMatching::reduce_procedure(NetworKit::Graph &graph) {
         continue;
 
       if (adj[v].size() == 0) {
-        stk.push_back({0, v});
-        currentGraphSize--;
+        removeVertex(currentGraphSize, v, stk);
       } else if (adj[v].size() == 1) {
-        NetworKit::node u = *adj[v].begin();
-        stk.push_back({1, v, u});
-        for (auto x : adj[u]) {
-          adj[x].erase(u);
-          if (adj[x].size() <= 2)
-            Q.push(x);
-        }
-        adj[v].clear();
-        adj[u].clear();
-        currentGraphSize -= 2;
+        removeEdge(currentGraphSize, v, Q, adj, stk);
       } else if (adj[v].size() == 2) {
-        auto it = adj[v].begin();
-        NetworKit::node u = *it;
-        NetworKit::node w = *std::next(it);
-        NetworKit::node x = adj.size();
-        adj.push_back({});
-        std::unordered_set<NetworKit::node> seen;
-        for (auto t : adj[u]) {
-          if (t != v) {
-            adj[t].erase(u);
-            adj[t].insert(x);
-            if (seen.find(t) == seen.end()) {
-              adj[x].insert(t);
-              seen.insert(t);
-            }
-          }
-        }
-
-        for (auto t : adj[w]) {
-          if (t != v) {
-            adj[t].erase(w);
-            adj[t].insert(x);
-            if (seen.find(t) == seen.end()) {
-              adj[x].insert(t);
-              seen.insert(t);
-            }
-          }
-        }
-        adj[v].clear();
-        adj[u].clear();
-        adj[w].clear();
-        if (adj[x].size() <= 2)
-          Q.push(x);
-
-        stk.push_back({2, v, u, w});
-        currentGraphSize -= 2;
+        contract(currentGraphSize, v, Q, adj, stk);
       }
     } else {
-      NetworKit::Graph induced(adj.size());
-      for (size_t i = 0; i < adj.size(); ++i) {
-        if (adj[i].size() > 0) {
-          for (auto u : adj[i]) {
-            if (i < u)
-              induced.addEdge(i, u);
-          }
-        }
-      }
-      double epsilon = loglog;
+      // if there are no nodes with deg <= 2, we can use MISP algo
+      NetworKit::Graph induced = getInducedSubgraphFromAdj(adj);
+
+      double epsilon = loglog / std::max(currentGraphSize, 1);
       MISP<NetworKit::Edge> mispAlgo(
           induced, epsilon,
           [&](const NetworKit::Graph &c) -> std::vector<NetworKit::Edge> {
@@ -150,11 +159,10 @@ PlanarSeparatorMatching::reduce_procedure(NetworKit::Graph &graph) {
           });
       mispAlgo.run();
       auto matching = mispAlgo.maximum_independent_set;
-      for (NetworKit::Edge e : matching) {
-        S.insert(e);
-        matched_nodes.insert(e.v);
-        matched_nodes.insert(e.u);
+      for (auto e : matching) {
+        insertEdgeIntoMatching(matched_nodes, S, e);
       }
+
       stop = true;
     }
   }
@@ -166,18 +174,15 @@ PlanarSeparatorMatching::reduce_procedure(NetworKit::Graph &graph) {
     if (action.deg == 0) {
       // just skip
     } else if (action.deg == 1) {
-      S.insert(NetworKit::Edge(action.v, action.u));
-      matched_nodes.insert(action.v);
-      matched_nodes.insert(action.u);
+      insertEdgeIntoMatching(matched_nodes, S,
+                             NetworKit::Edge(action.v, action.u));
     } else if (action.deg == 2) {
       if (matched_nodes.count(action.u) == 0) {
-        S.insert(NetworKit::Edge(action.v, action.u));
-        matched_nodes.insert(action.v);
-        matched_nodes.insert(action.u);
+        insertEdgeIntoMatching(matched_nodes, S,
+                               NetworKit::Edge(action.v, action.u));
       } else {
-        S.insert(NetworKit::Edge(action.v, action.w));
-        matched_nodes.insert(action.v);
-        matched_nodes.insert(action.w);
+        insertEdgeIntoMatching(matched_nodes, S,
+                               NetworKit::Edge(action.v, action.w));
       }
     }
   }

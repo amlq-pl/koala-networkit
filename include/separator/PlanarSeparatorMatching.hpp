@@ -12,7 +12,7 @@ public:
   std::vector<NetworKit::Edge> matching_set;
 
 private:
-  std::vector<NetworKit::Edge> reduce_procedure(NetworKit::Graph &subgraph);
+  std::vector<NetworKit::Edge> reduce_procedure(NetworKit::Graph &graph);
 
   NetworKit::Graph graph;
 };

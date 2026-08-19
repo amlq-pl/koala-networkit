@@ -7,6 +7,21 @@
 
 namespace Koala {
 
+inline NetworKit::Graph getInducedSubgraphFromAdj(
+    std::vector<std::unordered_set<NetworKit::node>> &adj) {
+  NetworKit::Graph induced(adj.size());
+  for (size_t i = 0; i < adj.size(); ++i) {
+    if (adj[i].size() > 0) {
+      for (auto u : adj[i]) {
+        if (i < u)
+          induced.addEdge(i, u);
+      }
+    }
+  }
+
+  return induced;
+}
+
 inline NetworKit::Graph
 getInducedSubgraph(const NetworKit::Graph &originalG,
                    const std::vector<NetworKit::node> &nodeIds) {

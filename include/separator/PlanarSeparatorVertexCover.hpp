@@ -17,7 +17,7 @@ private:
   std::vector<NetworKit::node> vertexCover;
   NetworKit::Graph graph;
   NetworKit::Graph residual;
-  void prep();
+  void prep(std::vector<bool> &U, std::vector<bool> &VC, int n);
 
   Bipartite bipartite(std::vector<bool> &U, std::vector<int> &deg_residual);
 };
