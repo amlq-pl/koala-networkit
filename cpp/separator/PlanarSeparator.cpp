@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iterator>
 #include <networkit/components/ConnectedComponents.hpp>
 #include <networkit/graph/GraphTools.hpp>
 #include <queue>
@@ -176,7 +175,7 @@ computeSidesCost(cycle_t &cycle,
     for (int j = 0; j < static_cast<int>(neighborsV.size()); j++) {
       auto w = neighborsV[j];
       if (w == prev || w == u)
-        continue; // skip cycle neighbors
+        continue;
 
       double cost = 0.0;
       if (parent[w] == v) {
@@ -184,7 +183,7 @@ computeSidesCost(cycle_t &cycle,
       } else if (parent[v] == w) {
         cost = costs[root] - costs[v];
       } else {
-        continue; // non-tree edge, no cost
+        continue;
       }
 
       if (isOnInsideArc(j, posU, posPrev)) {
@@ -225,31 +224,21 @@ std::optional<cycle_t> shrinkFundamentalCycle(
   // here we enter step 9
   cycle_t cycle_i = std::move(cycle);
 
-  auto apexes =
-      [&](NetworKit::node v,
-          NetworKit::node u) -> std::pair<NetworKit::node, NetworKit::node> {
+  int dir = cc.insideIsClockwiseArc ? -1 : 1;
+  auto getApex = [&](NetworKit::node v, NetworKit::node u) {
     const auto &neighborsV = embeddingH[v];
     int deg = static_cast<int>(neighborsV.size());
     int j = idxOf[v][u];
-    return {neighborsV[wrapIndex(j + 1, deg)],
-            neighborsV[wrapIndex(j - 1, deg)]};
+    return neighborsV[wrapIndex(j + dir, deg)];
   };
 
   NetworKit::count nodeBound = H.upperNodeIdBound();
   auto vcost = [&](NetworKit::node v) { return v == x ? 0.0 : vertexCost[v]; };
   double threshold = 2.0 / 3.0 * costsH[x];
 
-  std::vector<std::vector<NetworKit::node>> childrenH(nodeBound);
-  H.forNodes([&](NetworKit::node v) {
-    if (parentH[v] != NetworKit::none)
-      childrenH[parentH[v]].push_back(v);
-  });
-
-  std::vector<int> inside(nodeBound, 0);
-  std::vector<int> vis(nodeBound, 0);
-  std::vector<int> onCycle(nodeBound, 0);
+  std::vector<int> is_on_cycle(nodeBound, 0);
   for (auto c : cycle_i) {
-    onCycle[c] = 1;
+    is_on_cycle[c] = 1;
   }
 
   std::vector<NetworKit::node> cycleNext(nodeBound, NetworKit::none);
@@ -263,238 +252,149 @@ std::optional<cycle_t> shrinkFundamentalCycle(
   NetworKit::node curWi = w1;
   double insideCost = cc.insideCost;
 
-  // Safety bound: the shrink is expected to terminate in O(n) peels; the guard
-  // caps a pathological non-terminating configuration and falls back instead.
+  bool forward = (cycleNext[curVi] == curWi);
+  auto cNext = [&](NetworKit::node v) {
+    return forward ? cycleNext[v] : cyclePrev[v];
+  };
+
   long iterGuard = 0;
-  const long iterCap = 4 * static_cast<long>(nodeBound) + 16;
+  const long iterCap = 8 * static_cast<long>(nodeBound);
 
   while (insideCost > threshold) {
     if (++iterGuard > iterCap)
       return std::nullopt;
-    auto [y1, y2] = apexes(curVi, curWi);
-    // Prefer the interior apex; if neither apex is interior (the chord's inner
-    // triangle is an "ear"), take the one on the cycle, never the exterior one.
-    NetworKit::node y = inside[y1]  ? y1
-                        : inside[y2] ? y2
-                        : onCycle[y1] ? y1
-                                      : y2;
-    auto isViyTree = isTreeEdge(curVi, y, parentH);
-    auto isWiyTree = isTreeEdge(curWi, y, parentH);
 
-    if (inside[y] && (isViyTree || isWiyTree)) {
-      inside[y] = 0;
-      onCycle[y] = 1;
-      insideCost -= vcost(y);
-      // y moves from the interior onto the cycle: splice it between the two
-      // currently-adjacent chord endpoints curVi and curWi so the linked cycle
-      // keeps describing the current fundamental cycle.
-      if (cycleNext[curVi] == curWi) {
-        cycleNext[curVi] = y;
-        cyclePrev[y] = curVi;
-        cycleNext[y] = curWi;
-        cyclePrev[curWi] = y;
-      } else {
-        cyclePrev[curVi] = y;
-        cycleNext[y] = curVi;
-        cyclePrev[y] = curWi;
-        cycleNext[curWi] = y;
+    NetworKit::node y = getApex(curVi, curWi);
+
+    std::vector<NetworKit::node> pPath;
+    NetworKit::node z = y;
+    while (z != NetworKit::none && !is_on_cycle[z]) {
+      pPath.push_back(z);
+      z = parentH[z];
+    }
+    if (z == NetworKit::none)
+      break;
+    pPath.push_back(z);
+
+    std::vector<NetworKit::node> seqV;
+    NetworKit::node curr = z;
+    while (curr != curVi) {
+      seqV.push_back(curr);
+      curr = cNext(curr);
+    }
+    seqV.push_back(curVi);
+    for (size_t i = 0; i + 1 < pPath.size(); i++) {
+      seqV.push_back(pPath[i]);
+    }
+
+    std::vector<NetworKit::node> seqW;
+    curr = curWi;
+    while (curr != z) {
+      seqW.push_back(curr);
+      curr = cNext(curr);
+    }
+    seqW.push_back(z);
+    for (int i = static_cast<int>(pPath.size()) - 2; i >= 0; i--) {
+      seqW.push_back(pPath[i]);
+    }
+
+    double costV = 0.0, costW = 0.0;
+    int idxV = 0, idxW = 0;
+    bool doneV = false, doneW = false;
+
+    auto stepSeq = [&](const std::vector<NetworKit::node> &seq, int &idx,
+                       double &cost, bool &done) {
+      if (idx >= static_cast<int>(seq.size())) {
+        done = true;
+        return;
       }
-      if (!isViyTree) {
-        curWi = y;
-      } else {
-        curVi = y;
+      int sz = seq.size();
+      if (sz <= 2) {
+        cost = 0;
+        idx = sz;
+        done = true;
+        return;
       }
+
+      NetworKit::node prv = seq[(idx - 1 + sz) % sz];
+      NetworKit::node v = seq[idx];
+      NetworKit::node nxt = seq[(idx + 1) % sz];
+
+      int start = idxOf[v][nxt];
+      int end = idxOf[v][prv];
+      int deg = embeddingH[v].size();
+
+      for (int step = 1; step < deg; step++) {
+        int j = wrapIndex(start + dir * step, deg);
+        if (j == end)
+          break;
+        NetworKit::node w = embeddingH[v][j];
+        if (parentH[w] == v) {
+          cost += costsH[w];
+        }
+      }
+      idx++;
+      if (idx >= sz)
+        done = true;
+    };
+
+    while (!doneV && !doneW) {
+      stepSeq(seqV, idxV, costV, doneV);
+      stepSeq(seqW, idxW, costW, doneW);
+    }
+
+    double Pcost = 0.0;
+    for (size_t i = 0; i + 1 < pPath.size(); i++) {
+      Pcost += vcost(pPath[i]);
+    }
+
+    if (doneV) {
+      costW = insideCost - Pcost - costV;
     } else {
-      double Pcost = 0.0;
-      NetworKit::node z = y;
-      std::unordered_set<NetworKit::node> pVertexSet;
-      std::vector<NetworKit::node> pPath;
-      while (z != NetworKit::none && inside[z]) {
-        pVertexSet.insert(z);
-        pPath.push_back(z);
-        Pcost += vcost(z);
-        inside[z] = 0;
-        z = parentH[z];
+      costV = insideCost - Pcost - costW;
+    }
+
+    bool keepV = (costV >= costW);
+    insideCost = keepV ? costV : costW;
+
+    const auto &discardedSeq = keepV ? seqW : seqV;
+    const auto &keptSeq = keepV ? seqV : seqW;
+
+    std::unordered_set<NetworKit::node> keptSet(keptSeq.begin(), keptSeq.end());
+    for (NetworKit::node p : discardedSeq) {
+      if (!keptSet.count(p)) {
+        is_on_cycle[p] = 0;
       }
-      if (z == NetworKit::none)
-        break;
-      // curVi will be on one side and curWi on the other side
-      struct Stub {
-        NetworKit::node v;
-        int next;
-      };
-      struct Side {
-        int interiorSide; // +1/-1 which part of the arc is inside
-        bool cycleForward;
-        NetworKit::node boundaryPrev;
-        NetworKit::node boundaryCur;
-        NetworKit::node boundaryStop;
-        int arcPtr; // cursor of arc at boundaryCur
-        bool done = false;
-        std::vector<Stub> stack;
-        std::vector<NetworKit::node> vis;
-        double cost = 0.0;
-        NetworKit::node zNbr = NetworKit::none; // cycle-neighbour of z on this side
-      };
+    }
 
-      auto isOnBoundary = [&](NetworKit::node next, Side &side) -> bool {
-        if (pVertexSet.count(side.boundaryCur)) {
-          return next == parentH[side.boundaryCur];
-        }
-
-        return next == (side.cycleForward ? cyclePrev[side.boundaryCur]
-                                          : cycleNext[side.boundaryCur]);
-      };
-
-      auto initCurBoundaryVertex = [&](Side &side) {
-        int deg = embeddingH[side.boundaryCur].size();
-        side.arcPtr = wrapIndex(idxOf[side.boundaryCur][side.boundaryPrev] +
-                                    side.interiorSide,
-                                deg);
-      };
-
-      auto advance = [&](Side &side) -> bool {
-        if (side.done)
-          return false;
-
-        auto next = embeddingH[side.boundaryCur][side.arcPtr];
-        if (isOnBoundary(next, side)) {
-          side.boundaryPrev = side.boundaryCur;
-          side.boundaryCur = next;
-
-          // Record the cycle-neighbour of z this side steps onto (the first
-          // vertex of this side's arc off z): it identifies z's link into the
-          // discarded arc for the splice.
-          if (side.boundaryPrev == z && side.zNbr == NetworKit::none)
-            side.zNbr = side.boundaryCur;
-
-          // A side finishes when it reaches either chord endpoint. With an ear
-          // (empty P) the two sides can reach the opposite endpoint from what
-          // their labels suggest, so we must not pin them to a fixed stop.
-          if (side.boundaryCur == curVi || side.boundaryCur == curWi) {
-            side.done = true;
-            return true;
-          }
-          initCurBoundaryVertex(side);
-          return true;
-        } else if (parentH[next] == side.boundaryCur && inside[next]) {
-          side.cost += vcost(next);
-          side.stack.push_back({next, 0});
-        }
-
-        side.arcPtr = wrapIndex(side.arcPtr + side.interiorSide,
-                                embeddingH[side.boundaryCur].size());
-        return true;
-      };
-
-      // one DFS step at the time
-      auto step = [&](Side &side) -> bool {
-        if (!side.stack.empty()) {
-          Stub &stub = side.stack.back();
-          NetworKit::node cur = stub.v;
-
-          if (stub.next < static_cast<int>(childrenH[cur].size())) {
-            NetworKit::node next = childrenH[cur][stub.next++];
-            if (inside[next]) {
-              side.vis.push_back(next);
-              side.cost += vcost(next);
-              side.stack.push_back({next, 0});
-            }
-            return true;
-          }
-
-          side.stack.pop_back();
-          return true;
-        }
-
-        return advance(side);
-      };
-
-      // Overwrite a's link that currently points at oldNbr so it points at
-      // newNbr, keeping cycleNext/cyclePrev mutually consistent.
-      auto relink = [&](NetworKit::node a, NetworKit::node oldNbr,
-                        NetworKit::node newNbr) {
-        if (cycleNext[a] == oldNbr) {
-          cycleNext[a] = newNbr;
-          cyclePrev[newNbr] = a;
-        } else {
-          cyclePrev[a] = newNbr;
-          cycleNext[newNbr] = a;
-        }
-      };
-
-      auto cleanUp = [&](Side &side, NetworKit::node keep) -> bool {
-        long g = 0;
-        while (step(side)) {
-          if (++g > 8 * static_cast<long>(nodeBound) + 64)
-            return false;
-        }
-        for (auto v : side.vis) {
-          inside[v] = 0;
-        }
-
-        // Splice the new chord (keep, y) plus the tree path P (= pPath, from y
-        // up to just below z) into the cycle, dropping the discarded arc. Driven
-        // off the actual links, so no orientation assumption is made.
-        NetworKit::node discardedEnd = (keep == curVi) ? curWi : curVi;
-        if (pPath.empty()) {
-          // Ear: z == y is already on the cycle. The new chord (keep, y)
-          // replaces keep's old chord (to discardedEnd); relink also rewires
-          // y's back-link, dropping its discarded-arc link.
-          relink(keep, discardedEnd, y);
-          return true;
-        }
-        relink(keep, discardedEnd, y); // new chord keep - y
-        bool nextDir = (cycleNext[keep] == y);
-        NetworKit::node prev = y; // pPath[0] == y
-        for (size_t i = 1; i < pPath.size(); i++) {
-          NetworKit::node cur = pPath[i];
-          if (nextDir) {
-            cycleNext[prev] = cur;
-            cyclePrev[cur] = prev;
-          } else {
-            cyclePrev[prev] = cur;
-            cycleNext[cur] = prev;
-          }
-          prev = cur;
-        }
-        relink(z, side.zNbr, prev); // attach P's far end (p_k) to z
-        return true;
-      };
-
-      Side VSide{1, true, curVi, y, curVi, 0, false, {}, {}, 0.0};
-      Side WSide{-1, false, curWi, y, curWi, 0, false, {}, {}, 0.0};
-      initCurBoundaryVertex(VSide);
-      initCurBoundaryVertex(WSide);
-
-      long innerGuard = 0;
-      while (!WSide.done && !VSide.done) {
-        step(VSide);
-        step(WSide);
-        if (++innerGuard > 8 * static_cast<long>(nodeBound) + 64)
-          return std::nullopt;
+    for (size_t i = 0; i < keptSeq.size(); i++) {
+      NetworKit::node v = keptSeq[i];
+      NetworKit::node prv = keptSeq[(i - 1 + keptSeq.size()) % keptSeq.size()];
+      NetworKit::node nxt = keptSeq[(i + 1) % keptSeq.size()];
+      if (forward) {
+        cycleNext[v] = nxt;
+        cyclePrev[v] = prv;
+      } else {
+        cyclePrev[v] = nxt;
+        cycleNext[v] = prv;
       }
+      is_on_cycle[v] = 1;
+    }
 
-      double costV = VSide.done ? VSide.cost : insideCost - Pcost - WSide.cost;
-      double costW = WSide.done ? WSide.cost : insideCost - Pcost - VSide.cost;
-
-      bool keepVSide = costV >= costW;
-      insideCost = keepVSide ? costV : costW;
-      // The finished side stopped at one chord endpoint; the other side heads
-      // to the opposite one. The kept region's cycle closes at the endpoint on
-      // the kept side.
-      NetworKit::node doneEnd =
-          VSide.done ? VSide.boundaryCur : WSide.boundaryCur;
-      NetworKit::node otherEnd = (doneEnd == curVi) ? curWi : curVi;
-      NetworKit::node keptEnd = (keepVSide == VSide.done) ? doneEnd : otherEnd;
-      if (!cleanUp(keepVSide ? WSide : VSide, keptEnd))
-        return std::nullopt;
-
-      curVi = keptEnd;
+    if (keepV) {
       curWi = y;
+    } else {
+      curVi = y;
     }
   }
-  auto finalCycle = buildFundamentalCycle(curVi, curWi, parentH);
+
+  cycle_t finalCycle;
+  NetworKit::node curr = curVi;
+  do {
+    finalCycle.push_back(curr);
+    curr = cNext(curr);
+  } while (curr != curVi);
+
   return finalCycle;
 }
 } // namespace
@@ -511,16 +411,12 @@ PlanarSeparator::PlanarSeparator(const NetworKit::Graph &graph)
 void PlanarSeparator::run() {
   cleanPartitions();
 
-  // Nothing to separate in an empty graph.
   if (graph.numberOfNodes() == 0) {
     hasRun = true;
     return;
   }
 
-  // Normalize the vertex costs so they sum to 1, matching the paper's model
-  // ("nonnegative vertex costs summing to no more than one"). Every balance
-  // bound is then the literal constant 2/3, never a multiple of an arbitrary
-  // total.
+  // normalize total cost to 1
   double totalCost = 0.0;
   graph.forNodes([&](NetworKit::node v) { totalCost += vertexCost[v]; });
   if (totalCost > 0.0) {
@@ -541,9 +437,6 @@ void PlanarSeparator::run() {
     auto G = components.extractLargestConnectedComponent(graph, false);
     NetworKit::count n = G.numberOfNodes();
 
-    // extractLargestConnectedComponent(..., false) preserves the original
-    // node ids (with gaps), so node 0 may not belong to G. Start the BFS
-    // from a node that actually exists in the component.
     NetworKit::node root = NetworKit::none;
     G.forNodes([&](NetworKit::node v) {
       if (root == NetworKit::none)
@@ -554,12 +447,10 @@ void PlanarSeparator::run() {
 
     auto verticesAtLevel = findNumberOfVerticesAtLevel(lvl);
 
-    // prefix sum for easier counting of vertices at levels
     std::vector<NetworKit::count> prefixSum(verticesAtLevel.size());
     std::partial_sum(verticesAtLevel.begin(), verticesAtLevel.end(),
                      prefixSum.begin());
 
-    // Cost accumulated per BFS level (the weighted analogue of the counts).
     std::vector<double> costAtLevel(verticesAtLevel.size(), 0.0);
     double costG = 0.0;
     G.forNodes([&](NetworKit::node v) {
@@ -583,8 +474,6 @@ void PlanarSeparator::run() {
 
     // Step 5: Find levels l0 and l2
     // l0 is the largest level <= l1 such that |L(l0)| + 2*(l1-l0) <= 2*sqrt(k).
-    // The condition is not monotone, so scan downward from l1 and take the
-    // first (largest) level that satisfies it.
     NetworKit::node l0 = 0;
     for (int i = static_cast<int>(l1); i >= 0; i--) {
       if (verticesAtLevel[i] + 2.0 * (static_cast<int>(l1) - i) <=
@@ -594,8 +483,7 @@ void PlanarSeparator::run() {
       }
     }
     // l2 is the smallest level > l1 such that
-    // |L(l2)| + 2*(l2-l1-1) <= 2*sqrt(n-k). If none exists (e.g. l1 is the last
-    // level) it defaults to l1+1, a virtual empty ring below the middle.
+    // |L(l2)| + 2*(l2-l1-1) <= 2*sqrt(n-k)
     NetworKit::node l2 = l1 + 1;
     for (int i = static_cast<int>(l1) + 1;
          i < static_cast<int>(verticesAtLevel.size()); i++) {
@@ -645,7 +533,7 @@ void PlanarSeparator::run() {
       H.removeNode(v);
     }
 
-    // Step 7 compute spanngin tree of H and costs of subtrees hanging off it
+    // Step 7 compute spanning tree of H and costs of subtrees hanging off it
     auto [lvlH, parentH] = performBFSAndFindSpanningTree(H, x);
     std::vector<std::vector<NetworKit::node>> childrenH(
         H.upperNodeIdBound(), std::vector<NetworKit::node>());
@@ -655,13 +543,8 @@ void PlanarSeparator::run() {
       }
     });
     std::vector<double> costsH(H.upperNodeIdBound(), 0.0);
-    // Iterative post-order accumulation of subtree sizes, rooted at x.
-    // Recursion would overflow the stack on large graphs (tens of
-    // thousands of vertices).
     {
       std::vector<std::pair<NetworKit::node, size_t>> stk;
-      // x is the contracted super-vertex (levels <= l0); it has no cost of its
-      // own. Every other node contributes its own vertex cost.
       costsH[x] = 0.0;
       stk.emplace_back(x, 0);
       while (!stk.empty()) {
@@ -715,10 +598,6 @@ void PlanarSeparator::run() {
     // ---- Step 10: extract separator and partitions back to G ----
     extractSeparatorAndPartitions(G, lvl, l0, l2, finalCycle, x);
 
-    // The fundamental cycle can degenerate (e.g. a triangle enclosing almost
-    // nothing) and leave one side above 2/3. The level-l1 ring is always a
-    // balanced separator (BFS edges only span adjacent levels, so both sides
-    // hold < 1/2 the cost), so fall back to it whenever balance is violated.
     double cA = 0.0, cB = 0.0;
     for (auto v : partition.A)
       cA += vertexCost[v];
@@ -805,11 +684,9 @@ void PlanarSeparator::extractSeparatorAndPartitions(
   assignComponentsToSides(separatorNodes);
 }
 
+// if the cycle is degenerate, fallback to lvl1 as the separator
 void PlanarSeparator::fallbackLevelSeparator(
     const std::vector<NetworKit::node> &lvl, NetworKit::node l1) {
-  // Degenerate case (no usable fundamental cycle): fall back to the BFS level
-  // l1 as the separator. It splits the component into levels < l1 and > l1,
-  // each holding less than half of the cost.
   std::unordered_set<NetworKit::node> separatorNodes;
   for (NetworKit::node v = 0; v < lvl.size(); v++) {
     if (lvl[v] == l1 && graph.hasNode(v))
@@ -821,10 +698,6 @@ void PlanarSeparator::fallbackLevelSeparator(
 
 bool PlanarSeparator::areConnectedComponentsEligibleForPartition(
     NetworKit::ConnectedComponents &components) {
-  // Costs are normalized to sum to 1, so "eligible" means no single component
-  // has cost exceeding 2/3: then the whole components can be split into two
-  // sides each within 2/3, with an empty separator. Otherwise the heavy
-  // component must be separated further.
   double highestCost = 0.0;
   for (const auto &cc : components.getComponents()) {
     double ccCost = 0.0;
@@ -839,8 +712,6 @@ bool PlanarSeparator::areConnectedComponentsEligibleForPartition(
 void PlanarSeparator::findSeparatorFromComponents(
     NetworKit::ConnectedComponents &components) {
   (void)components;
-  // No single component exceeds 2/3 of the total cost, so an empty separator
-  // suffices: distribute whole components across the two sides.
   assignComponentsToSides(std::unordered_set<NetworKit::node>{});
 }
 
